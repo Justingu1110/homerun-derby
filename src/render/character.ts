@@ -26,7 +26,7 @@ import type { Appearance } from '../core';
  * the ground. Its back (−z) carries the jersey number.
  */
 
-/** Toon shading steps (shadow, mid, lit). Linear values: the r128 prototype's 110/200/255 after sRGB decode. */
+/** Toon shading steps (shadow, mid, lit), 0–255. Tuned by eye against the r128 prototype (110/200/255 there, without colour management). */
 const TOON_STEPS = [70, 190, 255];
 const INK = '#1b1124';
 const SHOE = '#1d1d26';
