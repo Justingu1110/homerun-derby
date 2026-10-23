@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { readBestScore, startRound, type BestScore, type BestScoreStorage, type Round } from './index';
+import { readBestScore, startRound, type BestScore, type BestScoreStorage, type PitchSettings, type Round } from './index';
 
 const fixed = (v: number) => () => v;
+
+/** 慢速 + 只有直球: 難度倍率 ×1.0, so each 全壘打 is worth 100. */
+const X1: PitchSettings = { types: ['fastball'], speed: 'slow' };
 
 /** Swing timing errors (ms) with known results at random 0.5. */
 const PERFECT = 0;
@@ -14,7 +17,7 @@ const pitchAndSwing = (round: Round, err: number) => {
 
 describe('一局: 10 outs end the round', () => {
   it('reports each out, and the round ends after the 10th', () => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), pitchSettings: X1 });
     expect(round.state()).toMatchObject({ outs: 0, maxOuts: 10, over: false });
     for (let i = 1; i <= 9; i++) {
       pitchAndSwing(round, WHIFF);
@@ -26,13 +29,13 @@ describe('一局: 10 outs end the round', () => {
   });
 
   it('home runs are not outs', () => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), pitchSettings: X1 });
     for (let i = 0; i < 15; i++) pitchAndSwing(round, PERFECT);
     expect(round.state()).toMatchObject({ outs: 0, over: false });
   });
 
   it('accepts no more pitches or swings once the round is over', () => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), pitchSettings: X1 });
     for (let i = 0; i < 10; i++) pitchAndSwing(round, WHIFF);
     expect(() => round.nextPitch()).toThrow();
     expect(() => round.swing(PERFECT)).toThrow();
@@ -42,8 +45,8 @@ describe('一局: 10 outs end the round', () => {
 });
 
 describe('分數', () => {
-  it('a round starts at zero with the difficulty multiplier fixed at ×1.0', () => {
-    expect(startRound({ random: fixed(0.5) }).state()).toMatchObject({
+  it('a round starts at zero, at the multiplier of its 投球設定 (×1.0 here)', () => {
+    expect(startRound({ random: fixed(0.5), pitchSettings: X1 }).state()).toMatchObject({
       score: 0,
       multiplier: 1,
       homeRuns: 0,
@@ -53,7 +56,7 @@ describe('分數', () => {
   });
 
   it('each home run scores 100 × the difficulty multiplier; outs score nothing', () => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), pitchSettings: X1 });
     pitchAndSwing(round, PERFECT);
     expect(round.state()).toMatchObject({ score: 100, homeRuns: 1 });
     pitchAndSwing(round, WHIFF);
@@ -65,7 +68,7 @@ describe('分數', () => {
   });
 
   it('adds up the home runs’ distances and keeps the longest one', () => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), pitchSettings: X1 });
     const a = pitchAndSwing(round, PERFECT); // dead centre: longest
     const b = pitchAndSwing(round, 10);
     pitchAndSwing(round, 60); // fly out: its distance doesn't count
@@ -93,7 +96,7 @@ const memoryStorage = (initial: BestScore | null = null) => {
 
 /** Plays a whole round: these swings (timing errors, ms), then whiffs until 10 outs. */
 const playRound = (storage: BestScoreStorage, swings: number[]) => {
-  const round = startRound({ random: fixed(0.5), storage });
+  const round = startRound({ random: fixed(0.5), pitchSettings: X1, storage });
   for (const err of swings) pitchAndSwing(round, err);
   while (!round.state().over) pitchAndSwing(round, WHIFF);
   return round.state();
@@ -141,7 +144,7 @@ describe('最高分', () => {
 
   it('is only judged when the round ends', () => {
     const { storage, saved } = memoryStorage();
-    const round = startRound({ random: fixed(0.5), storage });
+    const round = startRound({ random: fixed(0.5), pitchSettings: X1, storage });
     for (let i = 0; i < 5; i++) pitchAndSwing(round, PERFECT);
     for (let i = 0; i < 9; i++) pitchAndSwing(round, WHIFF);
     expect(round.state().newBest).toBe(false);

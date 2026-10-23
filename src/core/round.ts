@@ -1,6 +1,7 @@
 import { recordIfBest, type BestScoreStorage } from './bestScore';
 import { difficultyMultiplier, homeRunPoints } from './difficulty';
 import { FIELD } from './field';
+import { DEFAULT_PITCH_SETTINGS, type PitchSettings, type PitchType } from './pitchSettings';
 import { TUNING } from './tuning';
 
 /** Injected random source: returns a number in [0, 1), like Math.random. */
@@ -10,9 +11,11 @@ export interface RoundOptions {
   random: RandomSource;
   /** Where the 最高分 is read and written when the round ends. Optional: without it nothing is stored. */
   storage?: BestScoreStorage;
+  /** 投球設定 of this round. Optional: defaults to DEFAULT_PITCH_SETTINGS (直球, 中速). */
+  pitchSettings?: PitchSettings;
 }
 
-export type PitchType = 'fastball';
+export type { PitchType };
 
 /** One pitch, as the renderer needs it. Times are ms from the start of the pitch. */
 export interface Pitch {
@@ -93,9 +96,9 @@ export interface Round {
 }
 
 export function startRound(options: RoundOptions): Round {
-  const { random, storage } = options;
+  const { random, storage, pitchSettings = DEFAULT_PITCH_SETTINGS } = options;
   let current: Pitch | null = null;
-  const multiplier = difficultyMultiplier();
+  const multiplier = difficultyMultiplier(pitchSettings);
   let outs = 0;
   let score = 0;
   let homeRuns = 0;
