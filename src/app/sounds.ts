@@ -50,6 +50,33 @@ export const SOUNDS = {
       osc.stop(at + (last ? 0.55 : 0.15));
     });
   },
+
+  /** 打碎: a crash of breaking glass and metal, then a few tinkling bits. */
+  smash(ctx, out, t) {
+    const crash = noise(ctx, 0.7);
+    const high = ctx.createBiquadFilter();
+    high.type = 'highpass';
+    high.frequency.setValueAtTime(2600, t);
+    high.frequency.exponentialRampToValueAtTime(900, t + 0.5);
+    crash.connect(high).connect(envelope(ctx, out, t, 0.85, 0.004, 0.6));
+    crash.start(t);
+    const boom = ctx.createOscillator();
+    boom.type = 'triangle';
+    boom.frequency.setValueAtTime(120, t);
+    boom.frequency.exponentialRampToValueAtTime(45, t + 0.3);
+    boom.connect(envelope(ctx, out, t, 0.7, 0.003, 0.32));
+    boom.start(t);
+    boom.stop(t + 0.36);
+    [3520, 4186, 2960, 3729, 4699].forEach((freq, i) => {
+      const at = t + 0.06 + i * 0.07 + (i % 2) * 0.025;
+      const ping = ctx.createOscillator();
+      ping.type = 'sine';
+      ping.frequency.value = freq;
+      ping.connect(envelope(ctx, out, at, 0.12, 0.002, 0.18));
+      ping.start(at);
+      ping.stop(at + 0.22);
+    });
+  },
 } satisfies Record<string, SoundRecipe>;
 
 export type SoundName = keyof typeof SOUNDS;
