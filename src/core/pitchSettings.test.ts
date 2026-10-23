@@ -14,8 +14,9 @@ const throwPitches = (settings: PitchSettings, count: number, random = seeded(7)
   const round = startRound({ random, pitchSettings: settings });
   const pitches: Pitch[] = [];
   for (let i = 0; i < count; i++) {
-    pitches.push(round.nextPitch());
-    round.swing(0);
+    const pitch = round.nextPitch();
+    pitches.push(pitch);
+    round.swing(pitch.contactMs)!;
   }
   return pitches;
 };
@@ -44,16 +45,16 @@ describe('難度倍率 = 球速倍率 + 0.2 × (球種數 − 1)', () => {
   it('a round reports the multiplier of its 投球設定 and scores 100 × it per home run', () => {
     const round = startRound({ random: fixed(0.5), pitchSettings: { types: ['fastball', 'changeup', 'curveball'], speed: 'fast' } });
     expect(round.state().multiplier).toBe(2);
-    round.nextPitch();
-    expect(round.swing(0).kind).toBe('homeRun');
+    const pitch = round.nextPitch();
+    expect(round.swing(pitch.contactMs)!.kind).toBe('homeRun');
     expect(round.state().score).toBe(200);
   });
 
   it('a round without 投球設定 uses the default: 直球, 中速 (×1.3)', () => {
     const round = startRound({ random: fixed(0.5) });
     expect(round.state().multiplier).toBe(1.3);
-    round.nextPitch();
-    round.swing(0);
+    const pitch = round.nextPitch();
+    round.swing(pitch.contactMs)!;
     expect(round.state().score).toBe(130);
   });
 });
@@ -126,8 +127,8 @@ describe('球種 behave differently in flight', () => {
   it('timing is judged against each pitch’s own contact moment', () => {
     for (const type of ['fastball', 'changeup', 'curveball'] as const) {
       const round = startRound({ random: fixed(0.5), pitchSettings: { types: [type], speed: 'fast' } });
-      round.nextPitch();
-      expect(round.swing(0)).toMatchObject({ kind: 'homeRun', timing: 'perfect' });
+      const pitch = round.nextPitch();
+      expect(round.swing(pitch.contactMs)!).toMatchObject({ kind: 'homeRun', timing: 'perfect' });
     }
   });
 });

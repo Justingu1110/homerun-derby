@@ -12,8 +12,8 @@ const start = (random: () => number) => startRound({ random, randomness: 0, pitc
  * 0 ms → 0°, 150 m; ±12 ms → ±6.6°, 138 m; +28 ms → 15.4°, 122 m; −18 ms → −9.9°, 132 m.
  */
 const swingOnce = (round: Round, err: number): PitchResult => {
-  round.nextPitch();
-  return round.swing(err);
+  const pitch = round.nextPitch();
+  return round.swing(pitch.contactMs + err)!;
 };
 const hit = (err: number, random = fixed(0.99)) => swingOnce(start(random), err);
 const landingOf = (result: PitchResult) => {

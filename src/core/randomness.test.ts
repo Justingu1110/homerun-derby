@@ -6,8 +6,8 @@ const fixed = (v: number): RandomSource => () => v;
 /** One pitch, one swing with this timing error, at this 隨機幅度 and random source. */
 const swingOnce = (timingErrorMs: number, randomness: number | undefined, random: RandomSource): PitchResult => {
   const round = startRound({ random, randomness });
-  round.nextPitch();
-  return round.swing(timingErrorMs);
+  const pitch = round.nextPitch();
+  return round.swing(pitch.contactMs + timingErrorMs)!;
 };
 
 /**
@@ -115,8 +115,8 @@ describe('隨機幅度 does not change the 難度倍率', () => {
   it('the multiplier and the points per home run are the same at every 隨機幅度', () => {
     const at = (randomness: number) => {
       const round = startRound({ random: fixed(0.5), randomness });
-      round.nextPitch();
-      round.swing(0);
+      const pitch = round.nextPitch();
+      round.swing(pitch.contactMs)!;
       return round.state();
     };
     const baseline = at(0);

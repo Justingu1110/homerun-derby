@@ -6,8 +6,8 @@ const X1: PitchSettings = { types: ['fastball'], speed: 'slow' };
 /** 隨機幅度 0: a timing error always gives the same direction and 飛距離 (see facilities.test.ts). */
 const start = (random: () => number) => startRound({ random, randomness: 0, pitchSettings: X1 });
 const swingOnce = (round: Round, err: number): PitchResult => {
-  round.nextPitch();
-  return round.swing(err);
+  const pitch = round.nextPitch();
+  return round.swing(pitch.contactMs + err)!;
 };
 /** random 0.99 never 打碎 a 設施; 0 always does. */
 const NEVER = fixed(0.99);

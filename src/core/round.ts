@@ -33,7 +33,7 @@ export interface Pitch {
   flightMs: number;
   /** Ideal contact moment = releaseMs + flightMs. Timing error is measured against this. */
   contactMs: number;
-  /** After this the pitch has gone by: no swing can count, so report noSwing(). */
+  /** After this the pitch has gone by: a tap no longer counts, and tick() reports 沒揮棒. */
   swingDeadlineMs: number;
   /** How far (m) the ball breaks downward in flight: > 0 for a 曲球, 0 for the others. */
   dropM: number;
@@ -104,12 +104,19 @@ export interface RoundState {
 export interface Round {
   /** The round so far. */
   state(): RoundState;
-  /** Throws the next pitch. Each pitch takes exactly one swing() or noSwing(). */
+  /** Throws the next pitch. Each pitch is decided by exactly one swing() or tick() result. */
   nextPitch(): Pitch;
-  /** Swing with this timing error (ms, negative = early) against the current pitch. */
-  swing(timingErrorMs: number): PitchResult;
-  /** The current pitch reached the plate without a swing. */
-  noSwing(): PitchResult;
+  /**
+   * A tap elapsedMs after the start of the current pitch (the same clock as Pitch.contactMs).
+   * The core measures the timing error against the ideal contact moment. A tap after
+   * Pitch.swingDeadlineMs is not a swing: it returns null and the pitch is still undecided.
+   */
+  swing(elapsedMs: number): PitchResult | null;
+  /**
+   * The current pitch has been in flight elapsedMs with no swing. Past Pitch.swingDeadlineMs
+   * it has gone by: returns its 沒揮棒 out. Before that, null (still undecided).
+   */
+  tick(elapsedMs: number): PitchResult | null;
 }
 
 export function startRound(options: RoundOptions): Round {
@@ -153,14 +160,16 @@ export function startRound(options: RoundOptions): Round {
       current = throwPitch(pitchSettings, random);
       return current;
     },
-    swing(timingErrorMs) {
-      takePitch();
-      const judged = judgeSwing(timingErrorMs, randomness, random);
+    swing(elapsedMs) {
+      if (current && elapsedMs > current.swingDeadlineMs) return null;
+      const pitch = takePitch();
+      const judged = judgeSwing(elapsedMs - pitch.contactMs, randomness, random);
       if (judged.kind === 'out') return record(judged);
       const landing = facilities.land(judged.ball);
       return record({ ...judged, landing, cinematic: cinematicVersion(judged.ball, landing) });
     },
-    noSwing() {
+    tick(elapsedMs) {
+      if (current && elapsedMs <= current.swingDeadlineMs) return null;
       takePitch();
       return record({ kind: 'out', out: 'noSwing', timing: null, ball: null });
     },

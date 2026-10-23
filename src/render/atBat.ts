@@ -209,14 +209,15 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, overlay: Cin
     swing(atMs) {
       // A tap during the 全壘打演出 skips to the 飛距離 shot.
       if (cinematic.playing()) return cinematic.skip(Math.max(atMs, lastNowMs));
-      if (phase.name !== 'pitch' || phase.swingAtMs !== null || phase.result) return;
-      const elapsed = atMs - phase.startMs;
-      if (elapsed > phase.pitch.swingDeadlineMs) return;
+      if (phase.name !== 'pitch' || phase.result) return;
+      // The core decides whether this tap still counts as a 揮棒 (null: the pitch has gone by).
+      const result = round!.swing(atMs - phase.startMs);
+      if (!result) return;
       phase.swingAtMs = atMs;
       if (!swungOnce) hud.hint(false);
       swungOnce = true;
       events.swing?.();
-      resolve(phase, round!.swing(elapsed - phase.pitch.contactMs), atMs);
+      resolve(phase, result, atMs);
     },
 
     update(now) {
@@ -263,8 +264,11 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, overlay: Cin
         batter.setSwing(s < SHOW.swingToContactMs ? 0.4 * (s / SHOW.swingToContactMs) : 0.4 + 0.6 * clamp01((s - SHOW.swingToContactMs) / SHOW.swingFollowMs));
       }
 
-      // No swing by the deadline → 沒揮棒. Uses the deadline time, not the frame time.
-      if (!p.result && elapsed > p.pitch.swingDeadlineMs) resolve(p, round!.noSwing(), p.startMs + p.pitch.swingDeadlineMs);
+      // Undecided pitch: the core says when it has gone by (沒揮棒). Shown from the deadline, not the frame time.
+      if (!p.result) {
+        const passed = round!.tick(elapsed);
+        if (passed) resolve(p, passed, p.startMs + p.pitch.swingDeadlineMs);
+      }
 
       // Ball.
       ball.visible = true;

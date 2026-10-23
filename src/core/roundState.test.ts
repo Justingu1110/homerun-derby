@@ -8,11 +8,11 @@ const X1: PitchSettings = { types: ['fastball'], speed: 'slow' };
 
 /** Swing timing errors (ms) with known results at random 0.5. */
 const PERFECT = 0;
-const WHIFF = 400;
+const WHIFF = 200;
 
 const pitchAndSwing = (round: Round, err: number) => {
-  round.nextPitch();
-  return round.swing(err);
+  const pitch = round.nextPitch();
+  return round.swing(pitch.contactMs + err)!;
 };
 
 describe('一局: 10 outs end the round', () => {
@@ -23,8 +23,8 @@ describe('一局: 10 outs end the round', () => {
       pitchAndSwing(round, WHIFF);
       expect(round.state()).toMatchObject({ outs: i, over: false });
     }
-    round.nextPitch();
-    round.noSwing();
+    const pitch = round.nextPitch();
+    round.tick(pitch.swingDeadlineMs + 1);
     expect(round.state()).toMatchObject({ outs: 10, over: true });
   });
 
@@ -39,7 +39,7 @@ describe('一局: 10 outs end the round', () => {
     for (let i = 0; i < 10; i++) pitchAndSwing(round, WHIFF);
     expect(() => round.nextPitch()).toThrow();
     expect(() => round.swing(PERFECT)).toThrow();
-    expect(() => round.noSwing()).toThrow();
+    expect(() => round.tick(Infinity)).toThrow();
     expect(round.state().outs).toBe(10);
   });
 });
