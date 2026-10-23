@@ -35,4 +35,9 @@ export const TUNING = {
     /** …but never below this (a weak dribbler). */
     minDistance: 15,
   },
+  smash: {
+    /** Chance that hitting a 設施 打碎 it, at the near and far 飛距離 (m); linear between, clamped outside. */
+    near: { distance: 120, chance: 0.2 },
+    far: { distance: 150, chance: 0.8 },
+  },
 } as const;
