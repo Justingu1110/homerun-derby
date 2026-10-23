@@ -74,7 +74,7 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
   return {
     showTitle(best) {
       const bestEl = field('best');
-      bestEl.textContent = best ? String(best.score) : '還沒有最高分';
+      bestEl.textContent = best ? String(best.score) : '—';
       bestEl.classList.toggle('is-empty', !best);
       field('best-note').textContent = best?.pitchSettings ? describePitchSettings(best.pitchSettings) : '';
       show(title);
