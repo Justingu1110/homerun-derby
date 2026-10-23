@@ -1,0 +1,11 @@
+{
+  // Game core must stay pure: no DOM. `npm run typecheck` checks src/core
+  // with this config so a stray `document`/`window` fails CI.
+  // (The no-three.js rule is enforced by src/architecture.test.ts.)
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src/core"]
+}

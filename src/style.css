@@ -1,0 +1,600 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0e1330;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font-family: system-ui, -apple-system, 'Noto Sans TC', sans-serif;
+  color: #fff;
+  text-align: center;
+  font-weight: 900;
+  /* paint-order keeps CJK glyphs readable: their overlapping contours would
+     otherwise get stroked inside the letter. */
+  -webkit-text-stroke: 6px #1b1124;
+  paint-order: stroke fill;
+  text-shadow: 0 4px 0 #1b1124;
+}
+
+.hud-timing {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 20%;
+  font-size: 34px;
+  letter-spacing: 0.04em;
+}
+
+.hud-timing[data-grade='perfect'] {
+  color: #ffd400;
+  font-size: 44px;
+}
+
+.hud-result {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 29%;
+  font-size: 30px;
+}
+
+.hud-result[data-kind='homeRun'] {
+  color: #ffef7a;
+  font-size: 40px;
+}
+
+.hud-distance {
+  display: block;
+  font-size: 56px;
+  color: #fff;
+}
+
+.hud-hint {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(10% + env(safe-area-inset-bottom));
+  font-size: 18px;
+  font-weight: 700;
+  -webkit-text-stroke: 0;
+  text-shadow: 0 2px 4px #000a;
+  opacity: 0.9;
+}
+
+.pop {
+  animation: hud-pop 0.28s ease-out;
+}
+
+@keyframes hud-pop {
+  from {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pop {
+    animation: none;
+  }
+}
+
+/* ── 一局 top bar: 分數, 難度倍率, 出局 dots ─────────────────────────── */
+
+.hud-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: calc(10px + env(safe-area-inset-top));
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: #0e1330b3;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+  text-align: left;
+}
+
+.hud-bar[hidden] {
+  display: none;
+}
+
+.hud-score {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hud-score-label {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+.hud-score-value {
+  display: inline-block;
+  min-width: 2ch;
+  font-size: 26px;
+  color: #ffd400;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-mult {
+  font-size: 15px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: #ffffff22;
+}
+
+.hud-outs {
+  justify-self: end;
+  display: grid;
+  grid-template-columns: repeat(5, 12px);
+  gap: 4px 5px;
+}
+
+.hud-outs i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #ffffffaa;
+  box-sizing: border-box;
+}
+
+.hud-outs i.on {
+  background: #ff4d3d;
+  border-color: #ff4d3d;
+  box-shadow: 0 0 6px #ff4d3d;
+}
+
+/* ── 標題 / 結算 screens ──────────────────────────────────────────────── */
+
+#screens {
+  position: fixed;
+  inset: 0;
+  font-family: system-ui, -apple-system, 'Noto Sans TC', sans-serif;
+  color: #fff;
+  text-align: center;
+}
+
+#screens[hidden],
+.screen[hidden] {
+  display: none;
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: calc(24px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+  background: linear-gradient(#0e1330d9, #0e133099 45%, #0e1330e6);
+}
+
+.screen .label {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+.screen .value {
+  display: block;
+  font-size: 48px;
+  font-weight: 900;
+  color: #ffd400;
+  font-variant-numeric: tabular-nums;
+}
+
+.screen .value.is-empty {
+  font-size: 20px;
+  color: #fff;
+  opacity: 0.8;
+}
+
+.title-logo {
+  margin: 0 0 8px;
+  font-size: 58px;
+  line-height: 1.05;
+  font-weight: 900;
+  color: #ffef7a;
+  -webkit-text-stroke: 8px #1b1124;
+  paint-order: stroke fill;
+  text-shadow: 0 6px 0 #1b1124;
+  transform: rotate(-4deg);
+}
+
+.screen-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(280px, 100%);
+  margin-top: 10px;
+}
+
+.btn {
+  font: inherit;
+  font-size: 20px;
+  font-weight: 800;
+  padding: 14px 0;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: #ffffff26;
+  box-shadow: inset 0 0 0 2px #ffffff55;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn-primary {
+  font-size: 24px;
+  color: #1b1124;
+  background: #ffd400;
+  box-shadow: 0 5px 0 #a87f00;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(3px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.result-heading {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 900;
+}
+
+.result-record {
+  font-size: 30px;
+  font-weight: 900;
+  color: #ff4d3d;
+  -webkit-text-stroke: 6px #fff;
+  paint-order: stroke fill;
+  transform: rotate(-5deg);
+  animation: record-pulse 0.9s ease-in-out infinite alternate;
+}
+
+.result-record[hidden] {
+  display: none;
+}
+
+.screen-result.is-record .result-score .value {
+  font-size: 64px;
+  text-shadow: 0 0 18px #ffd400aa;
+}
+
+.result-stats {
+  display: grid;
+  gap: 8px;
+  width: min(300px, 100%);
+  margin: 0;
+}
+
+.result-stats div {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: #ffffff1a;
+  font-size: 18px;
+}
+
+.result-stats dt {
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.result-stats dd {
+  margin: 0;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes record-pulse {
+  to {
+    transform: rotate(-5deg) scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-record {
+    animation: none;
+  }
+}
+
+/* ── 設定 screen ──────────────────────────────────────────────────────── */
+
+.screen-heading {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 900;
+}
+
+.settings-list {
+  display: grid;
+  gap: 10px;
+  width: min(320px, 100%);
+}
+
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #0e1330cc;
+  box-shadow: inset 0 0 0 1px #ffffff2e;
+  text-align: left;
+}
+
+.setting-name {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.setting-value {
+  margin-left: 6px;
+  color: #ffd400;
+  font-variant-numeric: tabular-nums;
+}
+
+.setting-note {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.setting-note[hidden] {
+  display: none;
+}
+
+.setting-range {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.setting-range input {
+  --fill: 25%;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  touch-action: manipulation;
+}
+
+.setting-range input::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #ffd400 var(--fill), #ffffff40 var(--fill));
+}
+
+.setting-range input::-moz-range-track {
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #ffd400 var(--fill), #ffffff40 var(--fill));
+}
+
+.setting-range input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 0 #a87f00, inset 0 0 0 3px #ffd400;
+}
+
+.setting-range input::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 0 #a87f00, inset 0 0 0 3px #ffd400;
+}
+
+/* Switch: a styled checkbox. */
+.setting-toggle input {
+  position: relative;
+  flex: none;
+  width: 56px;
+  height: 32px;
+  margin: 0;
+  border-radius: 16px;
+  background: #ffffff40;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.setting-toggle input::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.setting-toggle input:checked {
+  background: #ffd400;
+}
+
+.setting-toggle input:checked::after {
+  transform: translateX(24px);
+}
+
+.setting input:focus-visible {
+  outline: 3px solid #ffef7a;
+  outline-offset: 3px;
+}
+
+.settings-vibration-note {
+  text-align: center;
+}
+
+/* ── 全壘打演出 overlay (styles are driven per frame by cinematicOverlay.ts) ── */
+
+#cinematic {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, 'Noto Sans TC', sans-serif;
+  color: #fff;
+  text-align: center;
+  font-weight: 900;
+}
+
+.cine-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  background: #000;
+}
+
+.cine-bar-top {
+  top: 0;
+}
+
+.cine-bar-bottom {
+  bottom: 0;
+}
+
+.cine-speed {
+  position: absolute;
+  inset: -20%;
+  opacity: 0;
+  background: repeating-conic-gradient(from 0deg at 50% 45%, transparent 0deg 5deg, #ffffff80 5deg 5.6deg);
+  -webkit-mask: radial-gradient(circle at 50% 45%, transparent 0 22%, #000 52%);
+  mask: radial-gradient(circle at 50% 45%, transparent 0 22%, #000 52%);
+}
+
+.cine-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+}
+
+.cine-pop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 34%;
+  opacity: 0;
+  font-size: clamp(40px, 13vw, 96px);
+  line-height: 1;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  color: #ffc83d;
+  -webkit-text-stroke: 7px #2a0d00;
+  paint-order: stroke fill;
+  text-shadow: 0 6px 0 #2a0d00, 0 10px 24px #0009;
+}
+
+.cine-pop-low {
+  top: 50%;
+  font-size: clamp(34px, 11vw, 80px);
+}
+
+.cine-pop.small {
+  font-size: clamp(30px, 9vw, 64px);
+  font-style: normal;
+  color: #fff;
+}
+
+.cine-distance {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 22%;
+  opacity: 0;
+}
+
+.cine-distance small {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-shadow: 0 2px 6px #000;
+}
+
+.cine-distance b {
+  font-size: clamp(64px, 24vw, 150px);
+  line-height: 1.05;
+  font-style: italic;
+  color: #ffc83d;
+  -webkit-text-stroke: 8px #2a0d00;
+  paint-order: stroke fill;
+  text-shadow: 0 6px 0 #2a0d00;
+  font-variant-numeric: tabular-nums;
+}
+
+.cine-distance span {
+  margin-left: 4px;
+  font-size: clamp(28px, 8vw, 54px);
+  -webkit-text-stroke: 5px #2a0d00;
+  paint-order: stroke fill;
+}
+
+.cine-skip {
+  position: absolute;
+  right: 12px;
+  bottom: calc(8vh + 12px + env(safe-area-inset-bottom));
+  opacity: 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid #ffffff2e;
+  background: #0000008c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* While the 全壘打演出 plays it owns the screen: the HUD steps aside. */
+#hud.is-cinematic .hud-bar,
+#hud.is-cinematic .hud-timing,
+#hud.is-cinematic .hud-result,
+#hud.is-cinematic .hud-hint {
+  visibility: hidden;
+}
