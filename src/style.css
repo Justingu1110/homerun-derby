@@ -18,3 +18,84 @@ body {
   height: 100%;
   display: block;
 }
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font-family: system-ui, -apple-system, 'Noto Sans TC', sans-serif;
+  color: #fff;
+  text-align: center;
+  font-weight: 900;
+  /* paint-order keeps CJK glyphs readable: their overlapping contours would
+     otherwise get stroked inside the letter. */
+  -webkit-text-stroke: 6px #1b1124;
+  paint-order: stroke fill;
+  text-shadow: 0 4px 0 #1b1124;
+}
+
+.hud-timing {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 20%;
+  font-size: 34px;
+  letter-spacing: 0.04em;
+}
+
+.hud-timing[data-grade='perfect'] {
+  color: #ffd400;
+  font-size: 44px;
+}
+
+.hud-result {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 29%;
+  font-size: 30px;
+}
+
+.hud-result[data-kind='homeRun'] {
+  color: #ffef7a;
+  font-size: 40px;
+}
+
+.hud-distance {
+  display: block;
+  font-size: 56px;
+  color: #fff;
+}
+
+.hud-hint {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(10% + env(safe-area-inset-bottom));
+  font-size: 18px;
+  font-weight: 700;
+  -webkit-text-stroke: 0;
+  text-shadow: 0 2px 4px #000a;
+  opacity: 0.9;
+}
+
+.pop {
+  animation: hud-pop 0.28s ease-out;
+}
+
+@keyframes hud-pop {
+  from {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pop {
+    animation: none;
+  }
+}
