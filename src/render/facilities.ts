@@ -301,6 +301,8 @@ function buildModel(f: Facility, paint: () => string): Model {
 interface Debris {
   object: Object3D;
   startMs: number;
+  /** When it has finished playing and can be disposed (Infinity: stays until the round ends). */
+  endMs: number;
   update(nowMs: number): void;
 }
 
@@ -375,16 +377,18 @@ export function createFacilityView(scene: Scene): FacilityView {
     else broken.delete(id);
   };
 
+  const dispose = (d: Debris) => {
+    scene.remove(d.object);
+    d.object.traverse((o) => {
+      if (o instanceof Mesh || o instanceof Points || o instanceof InstancedMesh) {
+        o.geometry.dispose();
+        (o.material as Material).dispose();
+      }
+    });
+  };
+
   const clearDebris = () => {
-    for (const d of debris) {
-      scene.remove(d.object);
-      d.object.traverse((o) => {
-        if (o instanceof Mesh || o instanceof Points || o instanceof InstancedMesh) {
-          o.geometry.dispose();
-          (o.material as Material).dispose();
-        }
-      });
-    }
+    for (const d of debris) dispose(d);
     debris = [];
   };
 
@@ -409,6 +413,7 @@ export function createFacilityView(scene: Scene): FacilityView {
     return {
       object: pts,
       startMs,
+      endMs: startMs + FX.sparkMs,
       update(now) {
         const t = Math.max(0, now - startMs);
         pts.visible = t < FX.sparkMs;
@@ -466,7 +471,8 @@ export function createFacilityView(scene: Scene): FacilityView {
     };
     update(startMs);
     mesh.name = `shards:${m.facility.id}`;
-    return { object: mesh, startMs, update };
+    // Shards stay where they fell until the round ends (sync clears them).
+    return { object: mesh, startMs, endMs: Infinity, update };
   };
 
   const tmp = new Vector3();
@@ -524,6 +530,11 @@ export function createFacilityView(scene: Scene): FacilityView {
     },
 
     update(now) {
+      // Sparks are done after a second; a round can have any number of hits, so free them as they finish.
+      if (debris.some((d) => now >= d.endMs)) {
+        for (const d of debris) if (now >= d.endMs) dispose(d);
+        debris = debris.filter((d) => now < d.endMs);
+      }
       for (const d of debris) d.update(now);
       for (const [id, startMs] of wobbles) {
         const m = models.get(id)!;
