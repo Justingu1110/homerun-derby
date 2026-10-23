@@ -3,6 +3,10 @@
  * phone; nothing else in src/core should hold a magic number for feel.
  */
 export const TUNING = {
+  round: {
+    /** 出局 that end 一局. */
+    maxOuts: 10,
+  },
   pitch: {
     /** Windup: from the start of a pitch until the ball leaves the hand. */
     windupMs: 1400,

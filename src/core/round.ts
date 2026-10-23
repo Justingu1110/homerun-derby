@@ -1,3 +1,5 @@
+import { recordIfBest, type BestScoreStorage } from './bestScore';
+import { difficultyMultiplier, homeRunPoints } from './difficulty';
 import { FIELD } from './field';
 import { TUNING } from './tuning';
 
@@ -6,6 +8,8 @@ export type RandomSource = () => number;
 
 export interface RoundOptions {
   random: RandomSource;
+  /** Where the 最高分 is read and written when the round ends. Optional: without it nothing is stored. */
+  storage?: BestScoreStorage;
 }
 
 export type PitchType = 'fastball';
@@ -55,7 +59,31 @@ export interface Out {
 
 export type PitchResult = HomeRun | Out;
 
+/** 一局的狀態, as the screen layer shows it. */
+export interface RoundState {
+  /** 出局 so far. */
+  outs: number;
+  /** 出局 that end the round (10). */
+  maxOuts: number;
+  /** True once the round has ended; no more pitches or swings. */
+  over: boolean;
+  /** 分數: each 全壘打 scores 100 × multiplier. */
+  score: number;
+  /** 難度倍率 of this round. */
+  multiplier: number;
+  /** 全壘打 so far. */
+  homeRuns: number;
+  /** Sum of the 全壘打' 飛距離 (m); breaks a tie in 分數. */
+  totalDistance: number;
+  /** The longest 全壘打, or null before the first. */
+  longest: BattedBall | null;
+  /** Set when the round ends: this round beat the 最高分 (and was stored as the new one). */
+  newBest: boolean;
+}
+
 export interface Round {
+  /** The round so far. */
+  state(): RoundState;
   /** Throws the next pitch. Each pitch takes exactly one swing() or noSwing(). */
   nextPitch(): Pitch;
   /** Swing with this timing error (ms, negative = early) against the current pitch. */
@@ -65,14 +93,40 @@ export interface Round {
 }
 
 export function startRound(options: RoundOptions): Round {
-  const { random } = options;
+  const { random, storage } = options;
   let current: Pitch | null = null;
+  const multiplier = difficultyMultiplier();
+  let outs = 0;
+  let score = 0;
+  let homeRuns = 0;
+  let totalDistance = 0;
+  let longest: BattedBall | null = null;
+  let newBest = false;
   const takePitch = () => {
     if (!current) throw new Error('No pitch in flight: call nextPitch() first');
+    const pitch = current;
     current = null;
+    return pitch;
   };
+  const record = (result: PitchResult): PitchResult => {
+    if (result.kind === 'out') {
+      outs++;
+    } else {
+      score += homeRunPoints(multiplier);
+      homeRuns++;
+      totalDistance += result.ball.distance;
+      if (!longest || result.ball.distance > longest.distance) longest = result.ball;
+    }
+    if (isOver()) newBest = recordIfBest(storage, { score, totalDistance });
+    return result;
+  };
+  const isOver = () => outs >= TUNING.round.maxOuts;
   return {
+    state() {
+      return { outs, maxOuts: TUNING.round.maxOuts, over: isOver(), score, multiplier, homeRuns, totalDistance, longest, newBest };
+    },
     nextPitch() {
+      if (isOver()) throw new Error('The round is over');
       const { windupMs, flightDistance, fastballKmh } = TUNING.pitch;
       const speedKmh = fastballKmh.min + (fastballKmh.max - fastballKmh.min) * random();
       const flightMs = (flightDistance / (speedKmh / 3.6)) * 1000;
@@ -83,18 +137,22 @@ export function startRound(options: RoundOptions): Round {
     },
     swing(timingErrorMs) {
       takePitch();
-      const timing = grade(timingErrorMs);
-      if (Math.abs(timingErrorMs) > TUNING.swing.contactWindowMs) return { kind: 'out', out: 'whiff', timing, ball: null };
-      const ball = battedBall(timingErrorMs);
-      if (Math.abs(ball.angle) > FIELD.foulLineAngle) return { kind: 'out', out: 'foul', timing, ball };
-      if (ball.distance < FIELD.fenceDistance) return { kind: 'out', out: 'flyOut', timing, ball };
-      return { kind: 'homeRun', timing, ball };
+      return record(judgeSwing(timingErrorMs));
     },
     noSwing() {
       takePitch();
-      return { kind: 'out', out: 'noSwing', timing: null, ball: null };
+      return record({ kind: 'out', out: 'noSwing', timing: null, ball: null });
     },
   };
+}
+
+function judgeSwing(timingErrorMs: number): PitchResult {
+  const timing = grade(timingErrorMs);
+  if (Math.abs(timingErrorMs) > TUNING.swing.contactWindowMs) return { kind: 'out', out: 'whiff', timing, ball: null };
+  const ball = battedBall(timingErrorMs);
+  if (Math.abs(ball.angle) > FIELD.foulLineAngle) return { kind: 'out', out: 'foul', timing, ball };
+  if (ball.distance < FIELD.fenceDistance) return { kind: 'out', out: 'flyOut', timing, ball };
+  return { kind: 'homeRun', timing, ball };
 }
 
 function grade(timingErrorMs: number): TimingGrade {
