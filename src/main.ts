@@ -80,7 +80,8 @@ const tapTime = (e: Event) => {
 window.addEventListener('pointerdown', (e) => atBat.swing(tapTime(e)));
 
 if (new URLSearchParams(location.search).has('debug')) {
-  (window as unknown as { __atBat: typeof atBat }).__atBat = atBat;
+  // __view exposes the renderer so Playwright can read renderer.info (draw calls, memory).
+  Object.assign(window, { __atBat: atBat, __view: view });
 }
 
 view.start(() => atBat.update(performance.now()));
