@@ -48,6 +48,8 @@ const FX = {
   /** Shards when 打碎. */
   shardCount: 44,
   shardGravity: 22,
+  /** Sideways scatter speed range (m/s). */
+  shardSpread: 26,
   /** Shards still in the air after this long are frozen where they are (they've left the screen). */
   shardMaxFlightMs: 4000,
 } as const;
@@ -164,7 +166,7 @@ function billboard(f: Facility): Model {
   stub.rotation.z = -0.35;
   broken.add(stub);
   root.add(intact, broken);
-  return { facility: f, root, intact, broken, shardColors: [ad.bg, ad.fg, COLORS.frame], shardSize: 1.1 };
+  return { facility: f, root, intact, broken, shardColors: [ad.bg, ad.fg, COLORS.frame], shardSize: 1.5 };
 }
 
 function scoreboard(f: Facility): Model {
@@ -189,7 +191,7 @@ function scoreboard(f: Facility): Model {
   right.rotation.z = -0.12;
   broken.add(left, right);
   root.add(intact, broken);
-  return { facility: f, root, intact, broken, shardColors: [COLORS.scoreboardBg, COLORS.scoreboardFg, COLORS.frame, '#ffffff'], shardSize: 1.5 };
+  return { facility: f, root, intact, broken, shardColors: [COLORS.scoreboardBg, COLORS.scoreboardFg, COLORS.frame, '#ffffff'], shardSize: 2 };
 }
 
 function lightTower(f: Facility): Model {
@@ -218,7 +220,7 @@ function lightTower(f: Facility): Model {
   broken.rotation.z = 0.45;
   broken.position.y -= 1.2;
   root.add(intact, broken);
-  return { facility: f, root, intact, broken, shardColors: [COLORS.bulb, COLORS.frame, '#ffffff'], shardSize: 0.8 };
+  return { facility: f, root, intact, broken, shardColors: [COLORS.bulb, COLORS.frame, '#ffffff'], shardSize: 1.1 };
 }
 
 /** Cars are drawn a bit larger than life so they still read as cars from home plate. */
@@ -247,7 +249,7 @@ function car(f: Facility, paint: string): Model {
   const intact = build(false);
   const broken = build(true);
   root.add(intact, broken);
-  return { facility: f, root, intact, broken, shardColors: [paint, COLORS.glass, '#ffffff'], shardSize: 0.7 };
+  return { facility: f, root, intact, broken, shardColors: [paint, COLORS.glass, '#ffffff'], shardSize: 0.9 };
 }
 
 /** The parking deck the cars sit on: a concrete block behind the right-center stands. */
@@ -429,10 +431,11 @@ export function createFacilityView(scene: Scene): FacilityView {
       const p0 = center.clone().lerp(at, 0.5 + rand() * 0.5);
       p0.x += (rand() - 0.5) * size * 0.6;
       p0.y += (rand() - 0.5) * size * 0.3;
+      // Mostly onward with the ball, a few knocked back, all flung up and out.
       const v = travel
         .clone()
-        .multiplyScalar(4 + rand() * 14)
-        .add(new Vector3((rand() - 0.5) * 16, 3 + rand() * 12, (rand() - 0.5) * 16));
+        .multiplyScalar(-2 + rand() * 16)
+        .add(new Vector3((rand() - 0.5) * FX.shardSpread, 5 + rand() * 14, (rand() - 0.5) * FX.shardSpread));
       // Land time: solve against the surface under the start, then re-solve against the one under that landing.
       const landT = (floor: number) => (v.y + Math.sqrt(v.y * v.y + 2 * FX.shardGravity * Math.max(0, p0.y - floor))) / FX.shardGravity;
       let t = landT(surfaceAt(p0.x, p0.z, deck));
