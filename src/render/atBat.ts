@@ -29,9 +29,11 @@ const SHOW = {
   /** Batter's stride: front foot lifts this long before contact and is planted this long before it. */
   strideLiftBeforeContactMs: 520,
   strideLandBeforeContactMs: 90,
-  /** Batted-ball hang time = base + distance / perMetre (seconds). */
+  /** Batted-ball hang time = base + distance / perMetre (seconds)… */
   hangBaseS: 0.9,
   hangPerMetre: 60,
+  /** …but an 出局's ball always lands this long before the next pitch, so it never vanishes mid-air. */
+  landBeforeNextPitchMs: 250,
   /** Apex height = distance × this (m), at least minApex. */
   apexPerMetre: 0.14,
   minApex: 3,
@@ -143,7 +145,7 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, overlay: Cin
     to: toWorld(b.angle, b.distance, 0.13),
     apex: Math.max(SHOW.minApex, b.distance * SHOW.apexPerMetre),
     startMs: atMs,
-    durationMs: (SHOW.hangBaseS + b.distance / SHOW.hangPerMetre) * 1000,
+    durationMs: Math.min((SHOW.hangBaseS + b.distance / SHOW.hangPerMetre) * 1000, SHOW.outPauseMs - SHOW.landBeforeNextPitchMs),
   });
 
   const resolve = (p: Extract<Phase, { name: 'pitch' }>, result: PitchResult, atMs: number) => {
