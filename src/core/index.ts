@@ -4,3 +4,5 @@ export type { FieldPoint } from './field';
 export { TUNING } from './tuning';
 export { startRound } from './round';
 export type { BattedBall, HomeRun, Out, OutKind, Pitch, PitchResult, PitchType, RandomSource, Round, RoundOptions, TimingGrade } from './round';
+export { DEFAULT_APPEARANCE, makeAppearance } from './appearance';
+export type { Appearance } from './appearance';
