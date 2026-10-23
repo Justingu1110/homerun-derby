@@ -1,5 +1,7 @@
 import './style.css';
-import { startRound } from './core';
+import { readBestScore, startRound } from './core';
+import { createScreens } from './app/screens';
+import { localBestScoreStorage } from './app/storage';
 import { createAtBat } from './render/atBat';
 import { createHud } from './render/hud';
 import { buildStadium } from './render/stadium';
@@ -7,12 +9,29 @@ import { createView } from './render/view';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#stage');
 const hudRoot = document.querySelector<HTMLElement>('#hud');
-if (!canvas || !hudRoot) throw new Error('#stage / #hud missing');
+const screensRoot = document.querySelector<HTMLElement>('#screens');
+if (!canvas || !hudRoot || !screensRoot) throw new Error('#stage / #hud / #screens missing');
 
 const view = createView(canvas);
 buildStadium(view.scene);
 const hud = createHud(hudRoot);
-const atBat = createAtBat(view.scene, view.camera, startRound({ random: Math.random }), hud, performance.now());
+const atBat = createAtBat(view.scene, view.camera, hud);
+const storage = localBestScoreStorage();
+
+// Screen flow: 標題 → 一局 → 結算 → (再玩一次 → 一局) | (回標題 → 標題).
+const showTitle = () => {
+  hud.showRound(null);
+  screens.showTitle(readBestScore(storage));
+};
+const play = () => {
+  screens.hide();
+  atBat.play(startRound({ random: Math.random, storage }), performance.now(), (state) => {
+    hud.showRound(null);
+    screens.showResult(state);
+  });
+};
+const screens = createScreens(screensRoot, { start: play, backToTitle: showTitle });
+showTitle();
 
 // Swing on any tap. event.timeStamp is a high-resolution time on the same clock
 // as performance.now(), taken when the touch happened, not when a frame ran.

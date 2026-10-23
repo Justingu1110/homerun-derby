@@ -99,3 +99,236 @@ body {
     animation: none;
   }
 }
+
+/* ── 一局 top bar: 分數, 難度倍率, 出局 dots ─────────────────────────── */
+
+.hud-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: calc(10px + env(safe-area-inset-top));
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: #0e1330b3;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+  text-align: left;
+}
+
+.hud-bar[hidden] {
+  display: none;
+}
+
+.hud-score {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hud-score-label {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+.hud-score-value {
+  display: inline-block;
+  min-width: 2ch;
+  font-size: 26px;
+  color: #ffd400;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-mult {
+  font-size: 15px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: #ffffff22;
+}
+
+.hud-outs {
+  justify-self: end;
+  display: grid;
+  grid-template-columns: repeat(5, 12px);
+  gap: 4px 5px;
+}
+
+.hud-outs i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #ffffffaa;
+  box-sizing: border-box;
+}
+
+.hud-outs i.on {
+  background: #ff4d3d;
+  border-color: #ff4d3d;
+  box-shadow: 0 0 6px #ff4d3d;
+}
+
+/* ── 標題 / 結算 screens ──────────────────────────────────────────────── */
+
+#screens {
+  position: fixed;
+  inset: 0;
+  font-family: system-ui, -apple-system, 'Noto Sans TC', sans-serif;
+  color: #fff;
+  text-align: center;
+}
+
+#screens[hidden],
+.screen[hidden] {
+  display: none;
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: calc(24px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+  background: linear-gradient(#0e1330d9, #0e133099 45%, #0e1330e6);
+}
+
+.screen .label {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+.screen .value {
+  display: block;
+  font-size: 48px;
+  font-weight: 900;
+  color: #ffd400;
+  font-variant-numeric: tabular-nums;
+}
+
+.screen .value.is-empty {
+  font-size: 20px;
+  color: #fff;
+  opacity: 0.8;
+}
+
+.title-logo {
+  margin: 0 0 8px;
+  font-size: 58px;
+  line-height: 1.05;
+  font-weight: 900;
+  color: #ffef7a;
+  -webkit-text-stroke: 8px #1b1124;
+  paint-order: stroke fill;
+  text-shadow: 0 6px 0 #1b1124;
+  transform: rotate(-4deg);
+}
+
+.screen-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(280px, 100%);
+  margin-top: 10px;
+}
+
+.btn {
+  font: inherit;
+  font-size: 20px;
+  font-weight: 800;
+  padding: 14px 0;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: #ffffff26;
+  box-shadow: inset 0 0 0 2px #ffffff55;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.btn-primary {
+  font-size: 24px;
+  color: #1b1124;
+  background: #ffd400;
+  box-shadow: 0 5px 0 #a87f00;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(3px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.result-heading {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 900;
+}
+
+.result-record {
+  font-size: 30px;
+  font-weight: 900;
+  color: #ff4d3d;
+  -webkit-text-stroke: 6px #fff;
+  paint-order: stroke fill;
+  transform: rotate(-5deg);
+  animation: record-pulse 0.9s ease-in-out infinite alternate;
+}
+
+.result-record[hidden] {
+  display: none;
+}
+
+.screen-result.is-record .result-score .value {
+  font-size: 64px;
+  text-shadow: 0 0 18px #ffd400aa;
+}
+
+.result-stats {
+  display: grid;
+  gap: 8px;
+  width: min(300px, 100%);
+  margin: 0;
+}
+
+.result-stats div {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: #ffffff1a;
+  font-size: 18px;
+}
+
+.result-stats dt {
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.result-stats dd {
+  margin: 0;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes record-pulse {
+  to {
+    transform: rotate(-5deg) scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-record {
+    animation: none;
+  }
+}
