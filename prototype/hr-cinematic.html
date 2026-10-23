@@ -59,6 +59,19 @@ body.cine .bar{height:8vh}
 
 .skip{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(var(--panelH,170px) + 10px);z-index:5;pointer-events:none;font-size:12px;font-weight:700;color:#fff;background:rgba(0,0,0,.55);border:1px solid var(--line);padding:5px 9px;border-radius:999px;opacity:0;transition:opacity .2s}
 body.cine .skip{opacity:1}
+#pitchInfo{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(var(--panelH,170px) + 12px);z-index:5;pointer-events:none;
+  display:flex;align-items:baseline;gap:8px;padding:6px 12px;border-radius:8px;background:rgba(8,10,28,.78);border:1px solid var(--line);
+  opacity:0;transform:translateY(8px);transition:opacity .15s,transform .15s}
+#pitchInfo.show{opacity:1;transform:none}
+#pitchInfo .pt{font-size:15px;font-weight:900}
+#pitchInfo .ps{font-family:'Bungee',var(--body);font-size:26px;color:var(--gold);font-variant-numeric:tabular-nums}
+#pitchInfo .pu{font-family:'Bungee',var(--body);font-size:12px;color:var(--muted)}
+body.cine #pitchInfo{opacity:0}
+#introCard{position:fixed;left:0;right:0;top:11%;z-index:6;pointer-events:none;text-align:center;opacity:0;transition:opacity .25s}
+#introCard.show{opacity:1}
+#introCard .lv{display:inline-block;font-size:14px;font-weight:900;letter-spacing:.3em;padding:3px 12px;border-radius:4px;background:var(--red);color:#fff}
+#introCard .nm{display:block;margin-top:8px;font-family:var(--display);font-weight:900;font-synthesis:none;font-size:clamp(34px,11vw,72px);color:#fff;-webkit-text-stroke:3px #2a0d00;paint-order:stroke fill;text-shadow:0 5px 0 #2a0d00}
+#introCard .mu{display:block;margin-top:6px;font-size:13px;font-weight:700;color:var(--gold);text-shadow:0 1px 4px #000}
 
 .panel{position:fixed;left:0;right:0;bottom:0;z-index:7;background:var(--panel);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid var(--line);
   padding:10px max(12px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));display:grid;gap:8px}
@@ -84,20 +97,23 @@ button{font:inherit;color:inherit;cursor:pointer}
   <div class="caption" id="caption">打者背後視角。按「重播」看一次完整的全壘打流程。</div>
 </header>
 <div id="pop"></div>
-<div id="dist"><small>飛距離</small><b id="distN">0</b><span>m</span></div>
+<div id="dist"><small>飛距離</small><b id="distN">0</b><span>ft</span></div>
+<div id="pitchInfo"><span class="pt" id="piType">直球</span><span class="ps" id="piSpeed">95</span><span class="pu">mph</span></div>
+<div id="introCard"><span class="lv" id="icLv">地獄</span><span class="nm" id="icName">山本由伸</span><span class="mu" id="icMu">倍率 ×2.5</span></div>
 <div class="skip">點畫面跳過 ▶▶</div>
 
 <section class="panel" id="panel">
+  <div class="row"><span class="lab">難度</span><div class="seg" id="diff"></div></div>
   <div class="row"><span class="lab">落點</span><div class="seg" id="tgt"></div></div>
   <div class="row">
     <span class="lab">選項</span>
     <button class="opt" id="optBrk" aria-pressed="true">打碎設施</button>
     <button class="opt" id="optShort" aria-pressed="false">精簡版</button>
     <button class="opt" id="optSlow" aria-pressed="false">慢速 0.5x</button>
-    <button class="opt" id="optStyle" aria-pressed="true">實況風角色</button>
+    <button class="opt" id="optCams">換一組鏡頭</button>
     <button class="play" id="play">▶ 重播</button>
   </div>
-  <div class="note" id="note">原型 v2：角色改成實況風（卡通渲染＋描邊、大頭、沒有手臂）。按「實況風角色」可切回 v1 的色塊風比較。只示範畫面，不含玩法和音效。</div>
+  <div class="note" id="note">原型 v3：選難度會先播投手登場（名字、體型、球衣、特效都是暫定）。球出手時右下角顯示球種與球速。每次重播隨機挑一組鏡頭，按「換一組鏡頭」可以再換。距離改成英尺。<br><b id="combo"></b></div>
 </section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -327,25 +343,34 @@ function jerseyTex(num, base, ink) {
 function pawa(c) {
   const g = new THREE.Group(), add = (parent, m, w) => { parent.add(w === 0 ? m : inked(m, w)); return m; };
   const torso = new THREE.Group(); torso.position.y = 0.36; g.add(torso);
-  const body = add(torso, new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.31, 0.42, 28), tmat(c.shirt, jerseyTex(c.num, c.shirt, c.trim))));
+  const bw = { slim: 0.84, normal: 1, big: 1.28 }[c.build || 'normal'];
+  const bodyScale = new THREE.Group(); bodyScale.scale.set(bw, c.build === 'big' ? 1.12 : 1, bw); torso.add(bodyScale);
+  const body = add(bodyScale, new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.31, 0.42, 28), tmat(c.shirt, jerseyTex(c.num, c.shirt, c.trim))));
   body.position.y = 0.22;
-  const shoulder = add(torso, new THREE.Mesh(new THREE.SphereGeometry(0.27, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), tmat(c.shirt)), 0);
+  const shoulder = add(bodyScale, new THREE.Mesh(new THREE.SphereGeometry(0.27, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), tmat(c.shirt)), 0);
   shoulder.position.y = 0.43; shoulder.scale.y = 0.45;
-  const belt = add(torso, new THREE.Mesh(new THREE.CylinderGeometry(0.315, 0.315, 0.06, 28), tmat('#20202a')), 0); belt.position.y = 0.0;
-  const hips = add(torso, new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.27, 0.14, 28), tmat(c.pants))); hips.position.y = -0.1;
-  [-1, 1].forEach(s => { const l = add(torso, new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), tmat(c.pants))); l.scale.set(1, 1.15, 1); l.position.set(s * 0.14, -0.22, 0); });
-  const head = new THREE.Group(); head.position.y = 0.84; torso.add(head);
+  const belt = add(bodyScale, new THREE.Mesh(new THREE.CylinderGeometry(0.315, 0.315, 0.06, 28), tmat('#20202a')), 0); belt.position.y = 0.0;
+  const hips = add(bodyScale, new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.27, 0.14, 28), tmat(c.pants))); hips.position.y = -0.1;
+  [-1, 1].forEach(s => { const l = add(bodyScale, new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), tmat(c.pants))); l.scale.set(1, 1.15, 1); l.position.set(s * 0.14, -0.22, 0); });
+  const head = new THREE.Group(); head.position.y = c.build === 'big' ? 0.9 : 0.84; torso.add(head);
   add(head, new THREE.Mesh(new THREE.SphereGeometry(0.42, 32, 24), tmat('#ffd9b5')), 0.03);
   [-1, 1].forEach(s => {
     const e = new THREE.Mesh(new THREE.SphereGeometry(0.055, 16, 12), new THREE.MeshBasicMaterial({ color: '#15101c' }));
-    e.scale.set(1, 1.75, 0.5); e.position.set(s * 0.13, 0.0, 0.39); head.add(e);
+    e.scale.set(1, c.fierce ? 1.15 : 1.75, 0.5); e.position.set(s * 0.13, 0.0, 0.39); head.add(e);
     const hl = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
     hl.position.set(s * 0.13 + 0.018, 0.05, 0.415); head.add(hl);
     const brow = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.022, 0.02), new THREE.MeshBasicMaterial({ color: '#15101c' }));
-    brow.position.set(s * 0.13, 0.15, 0.385); brow.rotation.z = s * -0.12; head.add(brow);
+    brow.position.set(s * 0.13, c.fierce ? 0.1 : 0.15, 0.39); brow.rotation.z = s * (c.fierce ? 0.45 : -0.12); if (c.fierce) brow.scale.set(1.3, 1.8, 1); head.add(brow);
   });
   const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.014, 0.01), new THREE.MeshBasicMaterial({ color: '#7a2b2b' }));
   mouth.position.set(0, -0.17, 0.4); head.add(mouth);
+  const ink = new THREE.MeshBasicMaterial({ color: '#15101c' });
+  if (c.glasses) [-1, 1].forEach(s => {
+    const r = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 6, 20), ink); r.position.set(s * 0.13, 0.0, 0.41); head.add(r);
+    if (s < 0) { const br = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.012, 0.01), ink); br.position.set(0, 0.02, 0.42); head.add(br); }
+  });
+  if (c.beard === 'mustache') { const m = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), ink); m.scale.set(1.7, 0.45, 0.4); m.position.set(0, -0.1, 0.41); head.add(m); }
+  if (c.beard === 'beard') { const b = new THREE.Mesh(new THREE.SphereGeometry(0.3, 20, 12, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.45), tmat('#3a2618')); b.position.set(0, -0.02, 0.06); head.add(b); }
   const capM = add(head, new THREE.Mesh(new THREE.SphereGeometry(0.44, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.5), tmat(c.cap)), 0.025);
   capM.position.y = 0.03;
   const brim = add(head, new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.03, 24), tmat(c.cap)), 0.015);
@@ -358,25 +383,35 @@ function pawa(c) {
   return { g, torso, head, feet, hands };
 }
 
-const CAST = {};
-function makeCast(style) {
-  const mk = style === 'pawa' ? pawa : chibi;
-  const b = mk({ shirt: '#f7f7f7', pants: '#f7f7f7', cap: '#d6322b', glove: '#ffffff', num: '55', trim: '#d6322b', flap: true });
-  b.g.position.set(-0.75, 0, 0.2); b.g.rotation.y = Math.PI / 2; scene.add(b.g);
-  b.hands.forEach(h => scene.add(h));
-  const p = mk({ shirt: '#2a4fb8', pants: '#eeeeee', cap: '#2a4fb8', glove: '#8b5a2b', num: '18', trim: '#ffffff' });
-  p.g.position.set(0, 0.3, -18.4); scene.add(p.g);
-  p.hands.forEach(h => p.g.add(h));
-  p.hands[1].position.set(0.25, 0.82, 0.3);
-  CAST[style] = { b, p };
+const batter = pawa({ shirt: '#f7f7f7', pants: '#f7f7f7', cap: '#d6322b', glove: '#ffffff', num: '55', trim: '#d6322b', flap: true });
+batter.g.position.set(-0.75, 0, 0.2); batter.g.rotation.y = Math.PI / 2; scene.add(batter.g);
+batter.hands.forEach(h => scene.add(h));
+
+// 難度 → 投手 (names, looks and effects are placeholders)
+const DIFFS = [
+  { key: 'easy',    label: '簡易', name: '古享恬',     mult: 1.0, types: ['直球'], speeds: ['slow'], fx: 0,
+    look: { shirt: '#7cc576', pants: '#f4f4f4', cap: '#ffffff', glove: '#c08850', num: '1',  trim: '#2f7a2b', build: 'slim', glasses: true } },
+  { key: 'normal',  label: '普通', name: '暫定投手 B', mult: 1.3, types: ['直球', '變速球'], speeds: ['mid'], fx: 1,
+    look: { shirt: '#ff9a3d', pants: '#f4f4f4', cap: '#c45a00', glove: '#8b5a2b', num: '21', trim: '#ffffff', build: 'normal', beard: 'mustache' } },
+  { key: 'hard',    label: '困難', name: '暫定投手 C', mult: 1.6, types: ['直球', '變速球', '曲球'], speeds: ['mid'], fx: 2,
+    look: { shirt: '#6a3fb8', pants: '#e8e8f0', cap: '#3d2380', glove: '#2a2a2a', num: '34', trim: '#ffd23d', build: 'normal', beard: 'beard' } },
+  { key: 'extreme', label: '極難', name: '暫定投手 D', mult: 2.0, types: ['直球', '變速球', '曲球'], speeds: ['fast'], fx: 3,
+    look: { shirt: '#1b1b24', pants: '#2c2c38', cap: '#ffc83d', glove: '#ffc83d', num: '11', trim: '#ffc83d', build: 'big', fierce: true } },
+  { key: 'hell',    label: '地獄', name: '山本由伸',   mult: 2.5, types: ['直球', '變速球', '曲球'], speeds: ['slow', 'mid', 'fast'], fx: 4,
+    look: { shirt: '#7a0f14', pants: '#1a1012', cap: '#1a1012', glove: '#1a1012', num: '18', trim: '#ff5a2a', build: 'big', fierce: true } },
+];
+const MPH = { 直球: { slow: [78, 82], mid: [86, 90], fast: [94, 99] }, 變速球: { slow: [68, 72], mid: [76, 80], fast: [84, 88] }, 曲球: { slow: [62, 66], mid: [70, 74], fast: [78, 82] } };
+DIFFS.forEach(d => {
+  const p = pawa(d.look); p.g.position.set(0, 0.3, -18.4); p.g.visible = false; scene.add(p.g);
+  p.hands.forEach(h => p.g.add(h)); p.hands[1].position.set(0.25, 0.82, 0.3);
+  d.pitcher = p;
+});
+let pitcher, diff;
+function useDiff(key) {
+  DIFFS.forEach(d => d.pitcher.g.visible = d.key === key);
+  diff = DIFFS.find(d => d.key === key); pitcher = diff.pitcher; pitcher.g.rotation.y = 0;
+  aura.setLevel(diff.fx);
 }
-makeCast('flat'); makeCast('pawa');
-let batter, pitcher;
-function useStyle(style) {
-  Object.entries(CAST).forEach(([k, { b, p }]) => { const on = k === style; b.g.visible = p.g.visible = on; b.hands.forEach(h => h.visible = on); });
-  batter = CAST[style].b; pitcher = CAST[style].p;
-}
-useStyle('pawa');
 
 const batGeo = new THREE.CylinderGeometry(0.055, 0.028, 1.0, 8); batGeo.translate(0, 0.5, 0);
 const bat = new THREE.Mesh(batGeo, fmat('#d9a55b')); scene.add(bat);
@@ -386,10 +421,10 @@ const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
 function batDir(yaw, elev, out) { const y = yaw * D, e = elev * D; return out.set(Math.sin(y) * Math.cos(e), Math.sin(e), Math.cos(y) * Math.cos(e)); }
 function setSwing(a) {
   let yaw, elev;
-  if (a <= 0.4) { const u = easeIn(a / 0.4); yaw = -15 + 105 * u; elev = 62 - 57 * u; }
+  if (a <= 0.4) { const u = easeIn(a / 0.4); yaw = 20 + 70 * u; elev = 40 - 35 * u; }
   else { const u = easeOut((a - 0.4) / 0.6); yaw = 90 + 175 * u; elev = 5 + 40 * u; }
   batDir(yaw, elev, tmp);
-  bat.position.copy(HANDS); bat.quaternion.setFromUnitVectors(UP, tmp);
+  if (!batFree) { bat.position.copy(HANDS); bat.quaternion.setFromUnitVectors(UP, tmp); }
   batter.hands[0].position.copy(HANDS).addScaledVector(tmp, 0.04);
   batter.hands[1].position.copy(HANDS).addScaledVector(tmp, 0.16);
   batter.torso.rotation.y = 0.9 * smooth(clamp01(a / 0.55));
@@ -458,6 +493,81 @@ function shatter(t) {
   }
 }
 
+// ---------- pitcher aura: stronger 投手, stronger effect
+const aura = (() => {
+  const g = new THREE.Group(); g.position.set(0, 0.3, -18.4); scene.add(g);
+  const ADD = THREE.AdditiveBlending, N = 320;
+  const P = new Float32Array(N * 3), Cc = new Float32Array(N * 3);
+  const parts = Array.from({ length: N }, () => ({ age: 1, life: 0, x: 0, y: -99, z: 0, v: new THREE.Vector3(), c: new THREE.Color() }));
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(P, 3)); geo.setAttribute('color', new THREE.BufferAttribute(Cc, 3));
+  const mat = new THREE.PointsMaterial({ map: glowTex, size: 0.2, vertexColors: true, transparent: true, depthWrite: false, blending: ADD });
+  const pts = new THREE.Points(geo, mat); pts.frustumCulled = false; g.add(pts);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#ff4a1a', blending: ADD, depthWrite: false, transparent: true }));
+  halo.position.y = 1.0; g.add(halo);
+  const rings = [0, 1].map(i => {
+    const m = new THREE.Mesh(new THREE.TorusGeometry(0.85 + i * 0.22, 0.025, 6, 40), new THREE.MeshBasicMaterial({ color: '#bff3ff', transparent: true, opacity: 0.55, depthWrite: false, blending: ADD }));
+    m.rotation.x = Math.PI / 2; m.position.y = 0.45 + i * 0.55; g.add(m); return m;
+  });
+  const boltGeo = new THREE.BufferGeometry(); boltGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(8 * 3), 3));
+  const bolt = new THREE.Line(boltGeo, new THREE.LineBasicMaterial({ color: '#eaf6ff', transparent: true, blending: ADD }));
+  bolt.frustumCulled = false; g.add(bolt);
+  const ground = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.7, 40), new THREE.MeshBasicMaterial({ color: '#ff3a1a', transparent: true, depthWrite: false, blending: ADD, side: THREE.DoubleSide }));
+  ground.rotation.x = -Math.PI / 2; ground.position.y = 0.03; g.add(ground);
+  const CFG = [null,
+    { rate: 12,  cols: ['#fff6c0', '#ffffff'], spread: 0.75, up: [0.3, 0.8], life: [0.7, 1.1], size: 0.22 },
+    { rate: 45,  cols: ['#bff3ff', '#ffffff'], spread: 0.95, up: [0.6, 1.4], life: [0.6, 1.0], size: 0.26, swirl: 2.2, rings: '#bff3ff' },
+    { rate: 80,  cols: ['#9fd3ff', '#ffffff', '#5ab4ff'], spread: 0.85, up: [1.0, 2.2], life: [0.4, 0.8], size: 0.3, swirl: 1.2, rings: '#7cc4ff', halo: ['#4aa8ff', 3.6], bolt: '#eaf6ff' },
+    { rate: 170, cols: ['#ff5a2a', '#ffb03a', '#ffe08a', '#ff2a1a'], spread: 0.6, up: [1.6, 3.4], life: [0.5, 1.1], size: 0.45, halo: ['#ff4a1a', 5.2], bolt: '#ffb46a', ground: true },
+  ];
+  let level = 0, acc = 0, clockA = 0, boltT = 0;
+  function setLevel(l) {
+    level = l; const c = CFG[l];
+    parts.forEach(q => { q.age = 1; q.life = 0; q.y = -99; });
+    pts.visible = !!c; if (c) mat.size = c.size;
+    rings.forEach(r => { r.visible = !!(c && c.rings); if (c && c.rings) r.material.color.set(c.rings); });
+    halo.visible = !!(c && c.halo); if (c && c.halo) { halo.material.color.set(c.halo[0]); halo.scale.setScalar(c.halo[1]); }
+    bolt.visible = false; ground.visible = !!(c && c.ground);
+  }
+  function update(dt) {
+    const c = CFG[level]; if (!c) return; clockA += dt;
+    acc += c.rate * dt;
+    for (let i = 0; i < N && acc >= 1; i++) {
+      const q = parts[i]; if (q.age < q.life) continue;
+      acc -= 1; const a = Math.random() * 6.283, r = c.spread * Math.sqrt(Math.random());
+      q.x = Math.cos(a) * r; q.z = Math.sin(a) * r; q.y = rnd(0, 0.3);
+      q.v.set(0, rnd(c.up[0], c.up[1]), 0);
+      if (c.swirl) q.v.add(new THREE.Vector3(-Math.sin(a), 0, Math.cos(a)).multiplyScalar(c.swirl));
+      q.age = 0; q.life = rnd(c.life[0], c.life[1]); q.c.set(c.cols[Math.floor(Math.random() * c.cols.length)]);
+    }
+    if (acc > 5) acc = 0;
+    parts.forEach((q, i) => {
+      if (q.age < q.life) {
+        q.age += dt; q.x += q.v.x * dt; q.y += q.v.y * dt; q.z += q.v.z * dt;
+        if (level === 4) { q.x *= 1 - dt * 0.8; q.z *= 1 - dt * 0.8; }
+        const f = Math.max(0, 1 - q.age / q.life);
+        P[i * 3] = q.x; P[i * 3 + 1] = q.y; P[i * 3 + 2] = q.z;
+        Cc[i * 3] = q.c.r * f; Cc[i * 3 + 1] = q.c.g * f; Cc[i * 3 + 2] = q.c.b * f;
+      } else { P[i * 3 + 1] = -99; }
+    });
+    geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true;
+    rings.forEach((r, i) => { r.rotation.z += dt * (2.5 + i * 1.5) * (i ? -1 : 1); r.scale.setScalar(1 + 0.08 * Math.sin(clockA * 5 + i)); });
+    if (halo.visible) halo.material.opacity = 0.55 + 0.25 * Math.sin(clockA * 7);
+    if (ground.visible) ground.material.opacity = 0.35 + 0.2 * Math.sin(clockA * 6);
+    if (c.bolt) {
+      boltT -= dt;
+      if (boltT <= 0) {
+        boltT = rnd(0.06, 0.16); bolt.visible = Math.random() < (level === 4 ? 0.75 : 0.55);
+        bolt.material.color.set(c.bolt);
+        const a = bolt.geometry.attributes.position, x0 = rnd(-0.9, 0.9), z0 = rnd(-0.6, 0.6);
+        for (let k = 0; k < 8; k++) a.setXYZ(k, x0 * (1 - k / 7) + rnd(-0.25, 0.25), 2.6 - k * 0.34, z0 * (1 - k / 7) + rnd(-0.25, 0.25));
+        a.needsUpdate = true;
+      }
+    }
+  }
+  return { setLevel, update };
+})();
+
 // ---------- overlay helpers
 const body = document.body;
 function pop(text, small) {
@@ -470,6 +580,7 @@ const shake = a => { if (!reduced) shakeAmp = Math.max(shakeAmp, a); };
 
 // ---------- options & state
 const opt = { target: 'board', brk: true, short: false, slow: false };
+let introNext = true, cams = {}, batFree = null;
 let T, H, dir, perp, side, tgt, fCur, crossed, impactDone, ballFree, ballVel, ballVisible, cheer, tube, fwTimer, distTimer;
 const camChase = new THREE.Vector3(), lookChase = new THREE.Vector3();
 
@@ -501,6 +612,44 @@ function doImpact(silent) {
 const CHIP_KEYS = ['投球', '揮棒特寫', '擊球特寫', '飛越全壘打牆', '撞擊', '飛距離'];
 $('#chips').innerHTML = CHIP_KEYS.map((k, i) => `<span class="chip" data-i="${i}"><b>${i + 1}</b>${k}</span>`).join('');
 
+const SWING_CAMS = {
+  front:   { label: '斜前方低角度', set(u) { setCam(1.15 - 0.2 * u, 0.7 + 0.08 * u, -2.0 + 0.3 * u, -0.4, 0.95, 0.2); } },
+  catcher: { label: '捕手視角',     set(u) { setCam(0.55 - 0.1 * u, 0.95, 2.3 - 0.4 * u, -0.35, 1.0, -1.2); } },
+  face:    { label: '正面',         set(u) { setCam(2.6 - 0.5 * u, 1.0, 0.25, -0.55, 1.0, 0.15); } },
+  worm:    { label: '地面仰角',     set(u) { setCam(0.45, 0.12 + 0.05 * u, -1.3 + 0.2 * u, -0.5, 1.35, 0.2); } },
+};
+const CONTACT_CAMS = {
+  trail:   { label: '光軌送棒', dur: 1.0, fEnd: 0.06 },
+  flip:    { label: '打者甩棒', dur: 1.2, fEnd: 0.07 },
+  pitcher: { label: '投手回頭目送', dur: 1.5, fEnd: 0.16 },
+};
+const CHASE_CAMS = {
+  chase:    { label: '後方追球' },
+  side:     { label: '側面追球' },
+  top:      { label: '上方俯瞰' },
+  outfield: { label: '外野迎面' },
+};
+const pick = o => { const k = Object.keys(o); return k[Math.floor(Math.random() * k.length)]; };
+function chaseGoal(kind, b, outPos, outLook) {
+  if (kind === 'side')      { outPos.copy(b).addScaledVector(perp, -15 * side).addScaledVector(dir, -3); outPos.y += 1.5; outLook.copy(b).addScaledVector(dir, 5); }
+  else if (kind === 'top')  { outPos.copy(b).addScaledVector(dir, -8); outPos.y += 22; outLook.copy(b).addScaledVector(dir, 9); }
+  else if (kind === 'outfield') { outPos.copy(polar(tgt.phi, 113, 7)).addScaledVector(perp, 8 * side); outLook.copy(b); }
+  else { outPos.copy(b).addScaledVector(dir, -9).addScaledVector(perp, 2.5); outPos.y += 3.5; outLook.copy(b).addScaledVector(dir, 15); outLook.y -= 2; }
+}
+function introShot() {
+  return { chip: -1, cap: ['1x', '投手登場：每個難度有自己的投手。名字、體型、球衣、特效都是暫定，難度越高特效越強。'], dur: 2.8, cine: true,
+    enter() {
+      $('#icLv').textContent = diff.label; $('#icName').textContent = diff.name;
+      $('#icMu').textContent = `倍率 ×${diff.mult.toFixed(1)}・${diff.types.join('／')}`;
+      $('#introCard').classList.add('show');
+    },
+    update(t) {
+      const u = smooth(clamp01(t / 2.8)), a = -0.55 + 1.1 * u;
+      camera.position.set(Math.sin(a) * 3.3, 1.0 + 0.35 * u, -18.4 + Math.cos(a) * 3.3); camera.lookAt(0, 1.3, -18.4);
+      setPitcher(0); pitcher.torso.rotation.y = 0.18 * Math.sin(t * 3);
+      if (t > 2.45) $('#introCard').classList.remove('show');
+    } };
+}
 function buildShots() {
   const sh = opt.short;
   const list = [];
@@ -508,37 +657,54 @@ function buildShots() {
     update(t) {
       setCam(...C0); setPitcher(t); setSwing(0);
       batter.feet[1].position.y = 0.05 + 0.12 * Math.sin(Math.PI * clamp01((t - 1.05) / 0.45));
-      if (t < 0.85) pitcher.hands[0].getWorldPosition(ball.position); else pitchPos(pQ * (t - 0.85) / 0.7, ball.position);
+      if (t < 0.85) pitcher.hands[0].getWorldPosition(ball.position); else { pitchPos(pQ * (t - 0.85) / 0.7, ball.position); $('#pitchInfo').classList.add('show'); }
     } });
-  list.push({ chip: 1, rate: sh ? 1.5 : 1, cap: ['0.1x', '慢動作＋低角度特寫：打者全力揮棒。擊中瞬間停格、閃光、畫面震動。'], dur: 1.4, cine: true,
+  list.push({ chip: 1, rate: sh ? 1.5 : 1, cap: ['0.1x', `慢動作揮棒特寫（${SWING_CAMS[cams.swing].label}）：擊中瞬間停格、閃光、畫面震動。`], dur: 1.4, cine: true,
     enter() { hit = false; },
     update(t) {
       const u = clamp01(t / 1.4);
-      setCam(1.15 - 0.2 * u, 0.7 + 0.08 * u, -2.0 + 0.3 * u, -0.4, 0.95, 0.2);
+      SWING_CAMS[cams.swing].set(u);
       if (t < 0.9) { pitchPos(pQ + (1 - pQ) * t / 0.9, ball.position); setSwing(0.4 * clamp01((t - 0.25) / 0.65)); }
       else if (t < 1.08) {
         if (!hit) { hit = true; ball.position.copy(K); setSwing(0.4); flash(); shake(0.12); pop('PERFECT!');
           burst(K, { n: 50, speed: 3, size: 0.12, life: 0.45, colors: ['#ffffff', '#ffe08a'], gravity: 0 }); }
       } else { const v = (t - 1.08) / 0.32; setSwing(0.4 + 0.22 * v); fCur = 0.004 * v; flightPos(fCur, ball.position); ballVisible = 'flight'; }
     } });
-  if (!sh) list.push({ chip: 2, cap: ['0.3x → 1x', '打者斜後方的低角度：打者送棒，球拖著光軌飛走，速度線，慢動作慢慢恢復正常速度。'], dur: 1.0, cine: true,
-    enter() { $('#speed').classList.add('on'); },
+  const cc = CONTACT_CAMS[cams.contact];
+  if (!sh) list.push({ chip: 2, cap: ['0.3x → 1x', {
+      trail: '打者斜後方的低角度：打者送棒，球拖著光軌飛走，速度線，慢動作慢慢恢復正常速度。',
+      flip: '打者甩棒：打者看著球飛走，把球棒往後一甩。',
+      pitcher: '投手回頭目送：鏡頭在投手面前，投手轉身看著球從頭上飛過。' }[cams.contact]], dur: cc.dur, cine: true,
+    enter() { if (cams.contact === 'trail') $('#speed').classList.add('on'); this.flipped = false; },
     update(t) {
       setSwing(0.62 + 0.38 * clamp01(t / 0.6));
-      fCur = 0.004 + 0.056 * easeIn(clamp01(t / 1.0)); flightPos(fCur, ball.position);
-      camera.position.copy(K).addScaledVector(dir, -3.2).addScaledVector(perp, 2.4 * side); camera.position.y = 1.1;
-      tmp.set(-0.6, 1.3, 0.2).lerp(ball.position, 0.55); camera.lookAt(tmp);
+      fCur = 0.004 + (cc.fEnd - 0.004) * easeIn(clamp01(t / cc.dur)); flightPos(fCur, ball.position);
+      if (cams.contact === 'trail') {
+        camera.position.copy(K).addScaledVector(dir, -3.2).addScaledVector(perp, 2.4 * side); camera.position.y = 1.1;
+        tmp.set(-0.6, 1.3, 0.2).lerp(ball.position, 0.55); camera.lookAt(tmp);
+      } else if (cams.contact === 'flip') {
+        setCam(2.1, 1.2, -1.0, -0.6, 1.1, 0.25);
+        if (!this.flipped && t > 0.35) {
+          this.flipped = true;
+          batFree = { v: new THREE.Vector3(-1.2, 3.6, 1.6), w: new THREE.Vector3(9, 2, 6) };
+          batter.head.rotation.x = -0.35;
+        }
+      } else {
+        const u = smooth(clamp01((t - 0.1) / 0.7));
+        pitcher.g.rotation.y = Math.PI * u;
+        camera.position.set(0.9, 1.4, -15.4);
+        tmp.set(0, 1.5, -18.4).lerp(ball.position, smooth(clamp01((t - 0.4) / 1.1)) * 0.7); camera.lookAt(tmp);
+      }
     } });
   const flyDur = (sh ? 1.2 : 1.6) + (tgt.r - 128) / 40;
-  list.push({ chip: 3, cap: ['1x', '追球鏡頭：跟著球飛向外野。越過全壘打牆時放煙火、觀眾跳起來。'], dur: flyDur, cine: true,
+  list.push({ chip: 3, cap: ['1x', `追球鏡頭（${CHASE_CAMS[cams.chase].label}）：越過全壘打牆時放煙火、觀眾跳起來。`], dur: flyDur, cine: true,
     enter() { this.f0 = fCur; if (sh) $('#speed').classList.add('on');
-      flightPos(this.f0, tmp); camChase.copy(tmp).addScaledVector(dir, -9).addScaledVector(perp, 2.5); camChase.y += 3.5; lookChase.copy(tmp).addScaledVector(dir, 15); },
+      flightPos(this.f0, tmp); chaseGoal(cams.chase, tmp, camChase, lookChase); },
     update(t, dt) {
       setSwing(1);
       fCur = this.f0 + (0.88 - this.f0) * clamp01(t / this.dur); flightPos(fCur, ball.position);
-      tmp.copy(ball.position).addScaledVector(dir, -9).addScaledVector(perp, 2.5); tmp.y += 3.5;
-      const k = 1 - Math.exp(-dt * 6); camChase.lerp(tmp, k);
-      tmp2.copy(ball.position).addScaledVector(dir, 15); tmp2.y -= 2; lookChase.lerp(tmp2, k);
+      chaseGoal(cams.chase, ball.position, tmp, tmp2);
+      const k = 1 - Math.exp(-dt * 6); camChase.lerp(tmp, k); lookChase.lerp(tmp2, k);
       camera.position.copy(camChase); camera.lookAt(lookChase);
       if (t > 0.4) $('#speed').classList.remove('on');
       if (!crossed && Math.hypot(ball.position.x, ball.position.z) >= 120) { crossed = true; pop('HOME RUN!!'); cheer = 1; firework(); firework(); }
@@ -556,7 +722,7 @@ function buildShots() {
       const pts = []; for (let i = 0; i <= 40; i++) pts.push(flightPos(i / 40, new THREE.Vector3()));
       tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 60, 0.45, 6), new THREE.MeshBasicMaterial({ color: '#ffc83d', fog: false }));
       scene.add(tube);
-      const d = Math.round(tgt.r); $('#dist').classList.add('show');
+      const d = Math.round(tgt.r * 3.281); $('#dist').classList.add('show');
       const t0 = performance.now(); clearInterval(distTimer);
       distTimer = setInterval(() => { const u = clamp01((performance.now() - t0) / 700); $('#distN').textContent = Math.round(d * easeOut(u)); if (u >= 1) clearInterval(distTimer); }, 30);
     },
@@ -572,7 +738,7 @@ function buildShots() {
       setCam(...C0); const q = camera.quaternion.clone();
       camera.position.lerpVectors(this.p, new THREE.Vector3(C0[0], C0[1], C0[2]), u);
       camera.quaternion.copy(this.q).slerp(q, u);
-      setPitcher(0); setSwing(0);
+      pitcher.g.rotation.y = 0; batter.head.rotation.x = 0; setPitcher(0); setSwing(0);
     } });
   return list;
 }
@@ -583,6 +749,7 @@ function enter(i) {
   const s = shots[i];
   if (!s) { cur = -1; body.classList.remove('cine'); ballVisible = 'hand'; ballFree = false; $('#caption').innerHTML = '流程結束。按「重播」再看一次，或換一個落點。'; markChips(-1, true); return; }
   s.enter && s.enter();
+  if (s.cine && s.chip >= 1) $('#pitchInfo').classList.remove('show');
   body.classList.toggle('cine', !!s.cine);
   $('#caption').innerHTML = `<span class="rate">${s.cap[0]}</span>${s.cap[1]}`;
   markChips(s.chip, false);
@@ -606,11 +773,23 @@ function reset() {
   perp = new THREE.Vector3(Math.cos(tgt.phi * D), 0, Math.sin(tgt.phi * D));
   side = tgt.phi >= 0 ? -1 : 1;
   fCur = 0; crossed = false; impactDone = false; ballFree = false; ballVel = new THREE.Vector3(); ballVisible = 'hand'; cheer = 0; fwTimer = 0; shakeAmp = 0;
+  batFree = null; pitcher.g.rotation.y = 0; batter.head.rotation.x = 0;
+  $('#pitchInfo').classList.remove('show'); $('#introCard').classList.remove('show');
   setPitcher(0); setSwing(0); batter.feet[1].position.y = 0.05;
 }
-function play() { reset(); shots = buildShots(); enter(0); }
+function play() {
+  reset();
+  cams = { swing: pick(SWING_CAMS), contact: pick(CONTACT_CAMS), chase: pick(CHASE_CAMS) };
+  const type = diff.types[Math.floor(Math.random() * diff.types.length)];
+  const lv = diff.speeds[Math.floor(Math.random() * diff.speeds.length)], [lo, hi] = MPH[type][lv];
+  $('#piType').textContent = type; $('#piSpeed').textContent = Math.round(rnd(lo, hi));
+  $('#combo').textContent = `本次鏡頭：揮棒＝${SWING_CAMS[cams.swing].label}` + (opt.short ? '' : `・擊球＝${CONTACT_CAMS[cams.contact].label}`) + `・追球＝${CHASE_CAMS[cams.chase].label}`;
+  shots = buildShots();
+  if (introNext) { shots.unshift(introShot()); introNext = false; }
+  enter(0);
+}
 function skip() {
-  if (cur < 1 || !shots[cur] || !shots[cur].cine || shots[cur].chip >= 5) return;
+  if (cur < 0 || !shots[cur] || !shots[cur].cine || shots[cur].chip >= 5 || shots[cur].chip < 1) return;
   if (!crossed) { crossed = true; cheer = 1; firework(); }
   doImpact(true); setSwing(1);
   enter(shots.findIndex(s => s.chip === 5));
@@ -626,8 +805,13 @@ const toggle = (id, key, after) => $(id).addEventListener('click', () => { opt[k
 toggle('#optBrk', 'brk', play);
 toggle('#optShort', 'short', play);
 toggle('#optSlow', 'slow');
-opt.pawa = true;
-toggle('#optStyle', 'pawa', () => { useStyle(opt.pawa ? 'pawa' : 'flat'); $('#optStyle').textContent = opt.pawa ? '實況風角色' : '色塊風角色'; play(); });
+$('#diff').innerHTML = DIFFS.map(d => `<button class="opt" data-k="${d.key}" aria-pressed="${d.key === 'hell'}">${d.label}</button>`).join('');
+$('#diff').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#diff .opt').forEach(x => x.setAttribute('aria-pressed', x === b));
+  useDiff(b.dataset.k); introNext = true; play();
+});
+$('#optCams').addEventListener('click', play);
 $('#play').addEventListener('click', play);
 $('#c').addEventListener('pointerdown', skip);
 
@@ -642,6 +826,13 @@ function frame(now) {
     s.update(Math.min(st, s.dur), sdt * (s.rate || 1));
     if (st >= s.dur) enter(cur + 1);
   } else { setCam(...C0); }
+
+  aura.update(sdt);
+  if (batFree) {
+    batFree.v.y -= 9.8 * sdt; bat.position.addScaledVector(batFree.v, sdt);
+    bat.rotation.x += batFree.w.x * sdt; bat.rotation.y += batFree.w.y * sdt; bat.rotation.z += batFree.w.z * sdt;
+    if (bat.position.y < 0.06) { bat.position.y = 0.06; batFree.v.set(0, 0, 0); batFree.w.set(0, 0, 0); }
+  }
 
   // ball after impact
   if (ballFree) {
@@ -697,6 +888,7 @@ function frame(now) {
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
+useDiff('hell');
 resize(); reset(); setCam(...C0);
 requestAnimationFrame(frame);
 setTimeout(play, 700);
