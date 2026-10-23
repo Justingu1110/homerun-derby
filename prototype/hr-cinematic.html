@@ -1,0 +1,704 @@
+<title>全壘打分鏡原型</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Noto+Sans+TC:wght@500;700;900&display=swap">
+<style>
+/* PROTOTYPE (throwaway): 全壘打演出分鏡。全螢幕 3D 場景 + 上方分鏡進度 + 下方控制列。單一夜場配色。 */
+:root{
+  --night:#0e1330;
+  --ink:#fff8ec;
+  --muted:#b8bfe3;
+  --gold:#ffc83d;
+  --red:#ff4f3a;
+  --panel:rgba(11,15,40,.84);
+  --line:rgba(255,255,255,.16);
+  --display:'Bungee','Noto Sans TC',system-ui,sans-serif;
+  --body:'Noto Sans TC',system-ui,-apple-system,'PingFang TC','Microsoft JhengHei',sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--night);color:var(--ink);font-family:var(--body);overflow:hidden;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+.bar{position:fixed;left:0;right:0;height:0;background:#000;transition:height .35s ease;pointer-events:none;z-index:2}
+.bar.top{top:0}.bar.bot{bottom:0}
+body.cine .bar{height:8vh}
+
+#speed{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .25s;z-index:1;
+  background:repeating-conic-gradient(from 0deg at 50% 45%,transparent 0deg 5deg,rgba(255,255,255,.5) 5deg 5.6deg);
+  -webkit-mask:radial-gradient(circle at 50% 45%,transparent 0 28%,#000 62%);mask:radial-gradient(circle at 50% 45%,transparent 0 28%,#000 62%)}
+#speed.on{opacity:1;animation:spin 1.2s linear infinite}
+@keyframes spin{to{transform:rotate(6deg)}}
+#flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:3}
+#flash.on{animation:flash .28s ease-out}
+@keyframes flash{from{opacity:.95}to{opacity:0}}
+
+.hud{position:fixed;top:0;left:0;right:0;z-index:5;pointer-events:none;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) max(12px,env(safe-area-inset-right,0px)) 0 max(12px,env(safe-area-inset-left,0px));
+  display:grid;gap:6px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-size:11px;font-weight:700;letter-spacing:.02em;padding:3px 7px;border-radius:4px;background:rgba(0,0,0,.45);color:var(--muted);border:1px solid var(--line);transition:background .2s,color .2s}
+.chip b{font-family:'Bungee',var(--body);font-weight:400;margin-right:3px}
+.chip.on{background:var(--gold);color:#1d1400;border-color:var(--gold)}
+.chip.done{color:#fff;opacity:.6}
+.caption{font-size:13px;line-height:1.45;font-weight:500;max-width:34em;text-shadow:0 1px 3px #000,0 0 8px #000}
+.caption .rate{display:inline-block;font-family:'Bungee',var(--body);font-size:11px;padding:1px 5px;margin-right:6px;border-radius:3px;background:var(--red);color:#fff;vertical-align:1px}
+
+#pop{position:fixed;left:0;right:0;top:34%;text-align:center;z-index:6;pointer-events:none;
+  font-family:var(--display);font-weight:900;font-synthesis:none;font-size:clamp(40px,13vw,96px);line-height:1;color:var(--gold);
+  -webkit-text-stroke:3px #2a0d00;paint-order:stroke fill;text-shadow:0 6px 0 #2a0d00,0 10px 24px rgba(0,0,0,.6);opacity:0}
+#pop.small{font-size:clamp(30px,9vw,64px);color:#fff}
+#pop.show{animation:pop 1.15s cubic-bezier(.2,1.4,.4,1) forwards}
+@keyframes pop{0%{opacity:0;transform:scale(2.4) rotate(-6deg)}14%{opacity:1;transform:scale(.92) rotate(-3deg)}24%{transform:scale(1.04) rotate(-3deg)}80%{opacity:1}100%{opacity:0;transform:scale(1) rotate(-3deg)}}
+
+#dist{position:fixed;left:0;right:0;top:26%;text-align:center;z-index:6;pointer-events:none;opacity:0;transform:translateY(10px);transition:opacity .3s,transform .3s}
+#dist.show{opacity:1;transform:none}
+#dist small{display:block;font-size:14px;font-weight:700;letter-spacing:.3em;color:var(--ink);text-shadow:0 2px 6px #000}
+#dist b{font-family:'Bungee',var(--body);font-weight:400;font-size:clamp(64px,22vw,150px);color:var(--gold);-webkit-text-stroke:3px #2a0d00;paint-order:stroke fill;text-shadow:0 6px 0 #2a0d00;font-variant-numeric:tabular-nums}
+#dist span{font-family:'Bungee',var(--body);font-size:clamp(28px,8vw,54px);color:#fff;-webkit-text-stroke:2px #2a0d00;paint-order:stroke fill;margin-left:4px}
+
+.skip{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(var(--panelH,170px) + 10px);z-index:5;pointer-events:none;font-size:12px;font-weight:700;color:#fff;background:rgba(0,0,0,.55);border:1px solid var(--line);padding:5px 9px;border-radius:999px;opacity:0;transition:opacity .2s}
+body.cine .skip{opacity:1}
+
+.panel{position:fixed;left:0;right:0;bottom:0;z-index:7;background:var(--panel);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid var(--line);
+  padding:10px max(12px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));display:grid;gap:8px}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.lab{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.08em;min-width:3em}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+button{font:inherit;color:inherit;cursor:pointer}
+.opt{font-size:13px;font-weight:700;padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink)}
+.opt[aria-pressed="true"]{background:var(--ink);color:var(--night);border-color:var(--ink)}
+.opt:focus-visible,.play:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.play{margin-left:auto;font-size:15px;font-weight:900;padding:8px 16px;border-radius:8px;border:0;background:var(--gold);color:#1d1400;box-shadow:0 3px 0 #a87800}
+.play:active{transform:translateY(2px);box-shadow:0 1px 0 #a87800}
+.note{font-size:11px;line-height:1.5;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){#speed.on{animation:none}#pop.show{animation-duration:.01s;opacity:1}}
+</style>
+
+<canvas id="c" aria-label="全壘打演出 3D 畫面"></canvas>
+<div class="bar top"></div><div class="bar bot"></div>
+<div id="speed"></div><div id="flash"></div>
+
+<header class="hud">
+  <div class="chips" id="chips"></div>
+  <div class="caption" id="caption">打者背後視角。按「重播」看一次完整的全壘打流程。</div>
+</header>
+<div id="pop"></div>
+<div id="dist"><small>飛距離</small><b id="distN">0</b><span>m</span></div>
+<div class="skip">點畫面跳過 ▶▶</div>
+
+<section class="panel" id="panel">
+  <div class="row"><span class="lab">落點</span><div class="seg" id="tgt"></div></div>
+  <div class="row">
+    <span class="lab">選項</span>
+    <button class="opt" id="optBrk" aria-pressed="true">打碎設施</button>
+    <button class="opt" id="optShort" aria-pressed="false">精簡版</button>
+    <button class="opt" id="optSlow" aria-pressed="false">慢速 0.5x</button>
+    <button class="opt" id="optStyle" aria-pressed="true">實況風角色</button>
+    <button class="play" id="play">▶ 重播</button>
+  </div>
+  <div class="note" id="note">原型 v2：角色改成實況風（卡通渲染＋描邊、大頭、沒有手臂）。按「實況風角色」可切回 v1 的色塊風比較。只示範畫面，不含玩法和音效。</div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const D = Math.PI / 180;
+const clamp01 = x => Math.max(0, Math.min(1, x));
+const easeIn = x => x * x;
+const easeOut = x => 1 - (1 - x) * (1 - x);
+const smooth = x => x * x * (3 - 2 * x);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---------- renderer / scene
+const renderer = new THREE.WebGLRenderer({ canvas: $('#c'), antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1500);
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.fov = w < h ? 64 : 48;
+  camera.updateProjectionMatrix();
+  document.body.style.setProperty('--panelH', $('#panel').offsetHeight + 'px');
+}
+addEventListener('resize', resize);
+
+const fmat = c => new THREE.MeshPhongMaterial({ color: c, flatShading: true, shininess: 6 });
+const lmat = c => new THREE.MeshLambertMaterial({ color: c, side: THREE.DoubleSide });
+const polar = (phi, r, y = 0) => new THREE.Vector3(Math.sin(phi * D) * r, y, -Math.cos(phi * D) * r);
+const box = (w, h, d, m) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+
+// sky
+{
+  const R = 900, g = new THREE.SphereGeometry(R, 24, 16), p = g.attributes.position, cols = [];
+  const top = new THREE.Color('#121a55'), mid = new THREE.Color('#5a4a9c'), hor = new THREE.Color('#ff9a5c');
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i) / R;
+    const c = y > 0.12 ? mid.clone().lerp(top, clamp01((y - 0.12) / 0.6)) : hor.clone().lerp(mid, clamp01((y + 0.02) / 0.14));
+    cols.push(c.r, c.g, c.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+  scene.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false })));
+}
+scene.fog = new THREE.Fog('#b9707a', 240, 800);
+scene.add(new THREE.HemisphereLight('#d6e2ff', '#3a5a2a', 0.85));
+const sun = new THREE.DirectionalLight('#ffd7b0', 0.9); sun.position.set(-80, 120, 70); scene.add(sun);
+
+// ---------- field
+{
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(700, 40), lmat('#2f6b2f'));
+  ground.rotation.x = -Math.PI / 2; scene.add(ground);
+  // mowing stripes in fair territory
+  for (let r = 0, i = 0; r < 122; r += 8, i++) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r, r + 8, 32, 1, Math.PI / 4, Math.PI / 2), lmat(i % 2 ? '#3f9140' : '#4aa24a'));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; scene.add(ring);
+  }
+  const lot = new THREE.Mesh(new THREE.RingGeometry(140, 205, 32, 1, Math.PI / 4 - 0.3, Math.PI / 2 + 0.6), lmat('#3b3e4c'));
+  lot.rotation.x = -Math.PI / 2; lot.position.y = 0.02; scene.add(lot);
+  const dirt = new THREE.Mesh(new THREE.PlaneGeometry(31, 31), lmat('#c98a52'));
+  dirt.rotation.x = -Math.PI / 2; dirt.rotation.z = Math.PI / 4; dirt.position.set(0, 0.03, -19.4); scene.add(dirt);
+  const inner = new THREE.Mesh(new THREE.PlaneGeometry(24.5, 24.5), lmat('#4aa24a'));
+  inner.rotation.x = -Math.PI / 2; inner.rotation.z = Math.PI / 4; inner.position.set(0, 0.04, -19.4); scene.add(inner);
+  const homeDirt = new THREE.Mesh(new THREE.CircleGeometry(4.2, 20), lmat('#c98a52'));
+  homeDirt.rotation.x = -Math.PI / 2; homeDirt.position.y = 0.05; scene.add(homeDirt);
+  const mound = new THREE.Mesh(new THREE.CylinderGeometry(2.7, 2.9, 0.3, 16), fmat('#c98a52'));
+  mound.position.set(0, 0.15, -18.4); scene.add(mound);
+  const white = fmat('#ffffff');
+  const plate = box(0.45, 0.03, 0.45, white); plate.position.set(0, 0.07, 0.2); scene.add(plate);
+  [[19.4, -19.4], [0, -38.8], [-19.4, -19.4]].forEach(([x, z]) => { const b = box(0.45, 0.1, 0.45, white); b.position.set(x, 0.08, z); scene.add(b); });
+  [-45, 45].forEach(phi => {
+    const l = box(0.12, 0.02, 120, white); l.position.copy(polar(phi, 60, 0.06)); l.rotation.y = -phi * D; scene.add(l);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 24, 6), fmat('#ffd400')); pole.position.copy(polar(phi, 120.3, 12)); scene.add(pole);
+  });
+  // outfield wall + yellow cap
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(120, 120, 4, 64, 1, true, Math.PI * 0.75, Math.PI / 2), lmat('#1c5536'));
+  wall.position.y = 2; scene.add(wall);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(120.1, 120.1, 0.4, 64, 1, true, Math.PI * 0.75, Math.PI / 2), lmat('#ffd400'));
+  cap.position.y = 4.1; scene.add(cap);
+  // stands: sloped frustum + back wall
+  const stands = new THREE.Mesh(new THREE.CylinderGeometry(136, 123, 12, 48, 1, true, Math.PI * 0.75 - 0.12, Math.PI / 2 + 0.24), lmat('#2c3f92'));
+  stands.position.y = 7; scene.add(stands);
+  const back = new THREE.Mesh(new THREE.CylinderGeometry(136.2, 136.2, 13.5, 48, 1, true, Math.PI * 0.75 - 0.12, Math.PI / 2 + 0.24), lmat('#1a2256'));
+  back.position.y = 6.75; scene.add(back);
+}
+const standsY = r => 1 + (r - 123) * 12 / 13;
+
+// crowd
+const CROWD_N = 1300;
+const crowd = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 0.9, 0.5), new THREE.MeshLambertMaterial(), CROWD_N);
+const crowdBase = [];
+{
+  const shirts = ['#ff5a5a', '#ffffff', '#ffd23d', '#5ad1ff', '#f08bd0', '#2c2c2c', '#7dff8a', '#ff9d3d'].map(c => new THREE.Color(c));
+  const o = new THREE.Object3D();
+  for (let i = 0; i < CROWD_N; i++) {
+    const phi = rnd(-47, 47), r = rnd(124, 135.3);
+    const p = polar(phi, r, standsY(r) + 0.45);
+    crowdBase.push({ p, ph: Math.random() * 6.28 });
+    o.position.copy(p); o.rotation.y = -phi * D; o.updateMatrix();
+    crowd.setMatrixAt(i, o.matrix);
+    crowd.setColorAt(i, shirts[i % shirts.length]);
+  }
+  scene.add(crowd);
+}
+
+// ---------- signage helpers
+function signTex(lines, bg, fg, w = 512, h = 184) {
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const x = cv.getContext('2d');
+  x.fillStyle = bg; x.fillRect(0, 0, w, h);
+  x.strokeStyle = fg; x.lineWidth = 8; x.strokeRect(10, 10, w - 20, h - 20);
+  x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle';
+  lines.forEach((l, i) => {
+    x.font = `900 ${l.s}px "Noto Sans TC", "PingFang TC", sans-serif`;
+    x.fillText(l.t, w / 2, h / 2 + (i - (lines.length - 1) / 2) * (l.s * 1.1));
+  });
+  const t = new THREE.CanvasTexture(cv); t.anisotropy = 4; return t;
+}
+const dark = fmat('#2a2d38');
+function faceMats(tex) { const f = new THREE.MeshBasicMaterial({ map: tex }); return [dark, dark, dark, dark, f, dark]; }
+
+const TARGETS = {
+  stands: { label: '觀眾席', phi: -12, r: 128, y: standsY(128) + 0.6, kind: 'stands' },
+  board:  { label: '看板',   phi: 22,  r: 137.6, y: 16.5, kind: 'facility', brk: '看板粉碎！', hit: '砰！擊中看板' },
+  score:  { label: '計分板', phi: 0,   r: 149,  y: 25,   kind: 'facility', brk: '計分板爆裂！', hit: '砰！擊中計分板' },
+  light:  { label: '照明燈', phi: -40, r: 145.4, y: 41,  kind: 'facility', brk: '照明燈打爆！', hit: '鏘！擊中照明燈' },
+  car:    { label: '停車場', phi: 14,  r: 168,  y: 1.9,  kind: 'facility', brk: '車窗碎裂！', hit: '砰！砸中車頂' },
+};
+
+// billboards on top of the stands
+[
+  [-32, ['全壘打可樂'], '#d6322b', '#fff'],
+  [-22, ['MOONSHOT'], '#121a55', '#ffc83d'],
+  [-10, ['炸雞 24H'], '#ffc83d', '#4a1d00'],
+  [10, ['HR BANK'], '#1f8a5b', '#fff'],
+  [22, [{ t: '打中這塊', s: 54 }, { t: '送你一台車', s: 54 }], '#ff7a1a', '#fff'],
+  [32, ['手套 5 折'], '#ffffff', '#1a2256'],
+].forEach(([phi, lines, bg, fg]) => {
+  const g = new THREE.Group(); g.position.copy(polar(phi, 138)); g.lookAt(0, 0, 0);
+  const ls = lines.map(l => typeof l === 'string' ? { t: l, s: 92 } : l);
+  const panel = box(14, 5, 0.6, faceMats(signTex(ls, bg, fg)));
+  panel.position.y = 16.5; g.add(panel);
+  [-5, 5].forEach(x => { const p = box(0.4, 3.6, 0.4, dark); p.position.set(x, 14.6, -0.2); g.add(p); });
+  scene.add(g);
+  if (phi === 22) { TARGETS.board.obj = panel; TARGETS.board.colors = [bg, fg, '#2a2d38']; }
+});
+
+// scoreboard
+{
+  const g = new THREE.Group(); g.position.copy(polar(0, 150)); g.lookAt(0, 0, 0);
+  const panel = box(34, 14, 2, faceMats(signTex([{ t: 'HOME RUN DERBY', s: 54 }, { t: 'HR 3   OUT ●●○', s: 46 }], '#0d1020', '#ffc83d', 640, 260)));
+  panel.position.y = 25; g.add(panel);
+  [-12, 12].forEach(x => { const p = box(1.6, 18, 1.6, dark); p.position.set(x, 9, -0.5); g.add(p); });
+  scene.add(g);
+  TARGETS.score.obj = panel; TARGETS.score.colors = ['#0d1020', '#ffc83d', '#2a2d38'];
+}
+
+// light towers
+[-40, 40].forEach(phi => {
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1, 40, 6), dark);
+  pole.position.copy(polar(phi, 146, 20)); scene.add(pole);
+  const lamp = new THREE.Group(); lamp.position.copy(polar(phi, 146, 41)); lamp.lookAt(0, 12, 0);
+  const frame = box(10, 5, 0.8, dark); lamp.add(frame);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) {
+    const b = new THREE.Mesh(new THREE.CircleGeometry(0.9, 10), new THREE.MeshBasicMaterial({ color: '#fff4c8', fog: false }));
+    b.position.set(-3.6 + i * 2.4, -1.15 + j * 2.3, 0.45); lamp.add(b);
+  }
+  scene.add(lamp);
+  if (phi === -40) { TARGETS.light.obj = lamp; TARGETS.light.colors = ['#fff4c8', '#2a2d38', '#ffffff']; }
+});
+
+// parking lot cars
+{
+  const paints = ['#d6322b', '#2a4fb8', '#f4f4f4', '#ffc83d', '#1f8a5b', '#151515', '#9aa3b5'];
+  const glass = fmat('#9fd3ff');
+  [160, 168, 176].forEach(r => {
+    for (let phi = -31; phi <= 32; phi += 4.5) {
+      if (Math.random() < 0.25 && !(r === 168 && Math.abs(phi - 14) < 0.1)) continue;
+      const g = new THREE.Group(); g.position.copy(polar(phi, r)); g.rotation.y = -phi * D + Math.PI / 2;
+      const paint = paints[Math.floor(Math.random() * paints.length)];
+      const body = box(4.2, 1.1, 1.9, fmat(paint)); body.position.y = 0.75; g.add(body);
+      const cab = box(2.4, 0.8, 1.7, glass); cab.position.set(-0.2, 1.7, 0); g.add(cab);
+      scene.add(g);
+      if (r === 168 && Math.abs(phi - 14) < 0.1) { TARGETS.car.obj = g; TARGETS.car.colors = [paint, '#9fd3ff', '#ffffff']; }
+    }
+  });
+}
+
+// ---------- characters (2-head chibi, floating hands/feet)
+// style 'flat': v1 low-poly blocks. style 'pawa': toon shading + ink outline, big round head, no arms.
+function chibi(c) {
+  const g = new THREE.Group();
+  const torso = new THREE.Group(); torso.position.y = 0.38; g.add(torso);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.3, 0.44, 8), fmat(c.shirt)); body.position.y = 0.22; torso.add(body);
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.305, 0.305, 0.06, 8), fmat('#222')); belt.position.y = 0.02; torso.add(belt);
+  const pants = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.26, 0.18, 8), fmat(c.pants)); pants.position.y = -0.1; torso.add(pants);
+  const head = new THREE.Group(); head.position.y = 0.78; torso.add(head);
+  head.add(new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 10), fmat('#f6cfa6')));
+  const capM = new THREE.Mesh(new THREE.SphereGeometry(0.36, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), fmat(c.cap)); capM.position.y = 0.03; head.add(capM);
+  const brim = box(0.34, 0.035, 0.24, fmat(c.cap)); brim.position.set(0, 0.05, 0.37); head.add(brim);
+  [-1, 1].forEach(s => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), fmat('#111')); e.position.set(s * 0.12, -0.03, 0.31); head.add(e); });
+  const feet = [-1, 1].map(s => { const f = box(0.16, 0.1, 0.27, fmat('#1d1d1d')); f.position.set(s * 0.15, 0.05, 0.04); g.add(f); return f; });
+  const hands = [0, 1].map(() => new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), fmat(c.glove)));
+  return { g, torso, head, feet, hands };
+}
+
+const toonGrad = (() => {
+  const t = new THREE.DataTexture(new Uint8Array([110, 200, 255]), 3, 1, THREE.LuminanceFormat);
+  t.minFilter = t.magFilter = THREE.NearestFilter; t.generateMipmaps = false; t.needsUpdate = true; return t;
+})();
+const tmat = (c, map) => new THREE.MeshToonMaterial({ color: map ? '#ffffff' : c, gradientMap: toonGrad, map: map || null });
+const inkMat = new THREE.MeshBasicMaterial({ color: '#1b1124', side: THREE.BackSide });
+function inked(mesh, w = 0.022) { // inverted-hull outline
+  const gm = mesh.geometry; gm.computeBoundingSphere();
+  const k = w / gm.boundingSphere.radius, o = new THREE.Mesh(gm, inkMat);
+  o.scale.setScalar(1 + k); o.position.copy(gm.boundingSphere.center).multiplyScalar(-k);
+  mesh.add(o); return mesh;
+}
+function jerseyTex(num, base, ink) {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128;
+  const x = cv.getContext('2d'); x.fillStyle = base; x.fillRect(0, 0, 256, 128);
+  x.fillStyle = ink; x.font = '900 70px "Bungee", "Noto Sans TC", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(num, 128, 66); return new THREE.CanvasTexture(cv);
+}
+function pawa(c) {
+  const g = new THREE.Group(), add = (parent, m, w) => { parent.add(w === 0 ? m : inked(m, w)); return m; };
+  const torso = new THREE.Group(); torso.position.y = 0.36; g.add(torso);
+  const body = add(torso, new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.31, 0.42, 28), tmat(c.shirt, jerseyTex(c.num, c.shirt, c.trim))));
+  body.position.y = 0.22;
+  const shoulder = add(torso, new THREE.Mesh(new THREE.SphereGeometry(0.27, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), tmat(c.shirt)), 0);
+  shoulder.position.y = 0.43; shoulder.scale.y = 0.45;
+  const belt = add(torso, new THREE.Mesh(new THREE.CylinderGeometry(0.315, 0.315, 0.06, 28), tmat('#20202a')), 0); belt.position.y = 0.0;
+  const hips = add(torso, new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.27, 0.14, 28), tmat(c.pants))); hips.position.y = -0.1;
+  [-1, 1].forEach(s => { const l = add(torso, new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), tmat(c.pants))); l.scale.set(1, 1.15, 1); l.position.set(s * 0.14, -0.22, 0); });
+  const head = new THREE.Group(); head.position.y = 0.84; torso.add(head);
+  add(head, new THREE.Mesh(new THREE.SphereGeometry(0.42, 32, 24), tmat('#ffd9b5')), 0.03);
+  [-1, 1].forEach(s => {
+    const e = new THREE.Mesh(new THREE.SphereGeometry(0.055, 16, 12), new THREE.MeshBasicMaterial({ color: '#15101c' }));
+    e.scale.set(1, 1.75, 0.5); e.position.set(s * 0.13, 0.0, 0.39); head.add(e);
+    const hl = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+    hl.position.set(s * 0.13 + 0.018, 0.05, 0.415); head.add(hl);
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.022, 0.02), new THREE.MeshBasicMaterial({ color: '#15101c' }));
+    brow.position.set(s * 0.13, 0.15, 0.385); brow.rotation.z = s * -0.12; head.add(brow);
+  });
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.014, 0.01), new THREE.MeshBasicMaterial({ color: '#7a2b2b' }));
+  mouth.position.set(0, -0.17, 0.4); head.add(mouth);
+  const capM = add(head, new THREE.Mesh(new THREE.SphereGeometry(0.44, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.5), tmat(c.cap)), 0.025);
+  capM.position.y = 0.03;
+  const brim = add(head, new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.03, 24), tmat(c.cap)), 0.015);
+  brim.scale.set(1.25, 1, 1); brim.position.set(0, 0.05, 0.43);
+  const badge = new THREE.Mesh(new THREE.CircleGeometry(0.08, 20), new THREE.MeshBasicMaterial({ color: c.trim }));
+  badge.position.set(0, 0.26, 0.37); badge.rotation.x = -0.6; head.add(badge);
+  if (c.flap) { const f = add(head, new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 12), tmat(c.cap)), 0.015); f.scale.set(0.5, 1, 1); f.position.set(0.4, -0.06, 0.02); }
+  const feet = [-1, 1].map(s => { const f = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 10), tmat('#1d1d26')); f.scale.set(1.2, 0.65, 1.7); f.position.set(s * 0.15, 0.06, 0.05); g.add(inked(f, 0.02)); return f; });
+  const hands = [0, 1].map(() => inked(new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 12), tmat(c.glove)), 0.018));
+  return { g, torso, head, feet, hands };
+}
+
+const CAST = {};
+function makeCast(style) {
+  const mk = style === 'pawa' ? pawa : chibi;
+  const b = mk({ shirt: '#f7f7f7', pants: '#f7f7f7', cap: '#d6322b', glove: '#ffffff', num: '55', trim: '#d6322b', flap: true });
+  b.g.position.set(-0.75, 0, 0.2); b.g.rotation.y = Math.PI / 2; scene.add(b.g);
+  b.hands.forEach(h => scene.add(h));
+  const p = mk({ shirt: '#2a4fb8', pants: '#eeeeee', cap: '#2a4fb8', glove: '#8b5a2b', num: '18', trim: '#ffffff' });
+  p.g.position.set(0, 0.3, -18.4); scene.add(p.g);
+  p.hands.forEach(h => p.g.add(h));
+  p.hands[1].position.set(0.25, 0.82, 0.3);
+  CAST[style] = { b, p };
+}
+makeCast('flat'); makeCast('pawa');
+let batter, pitcher;
+function useStyle(style) {
+  Object.entries(CAST).forEach(([k, { b, p }]) => { const on = k === style; b.g.visible = p.g.visible = on; b.hands.forEach(h => h.visible = on); });
+  batter = CAST[style].b; pitcher = CAST[style].p;
+}
+useStyle('pawa');
+
+const batGeo = new THREE.CylinderGeometry(0.055, 0.028, 1.0, 8); batGeo.translate(0, 0.5, 0);
+const bat = new THREE.Mesh(batGeo, fmat('#d9a55b')); scene.add(bat);
+const HANDS = new THREE.Vector3(-0.53, 0.82, 0.2);
+const UP = new THREE.Vector3(0, 1, 0);
+const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
+function batDir(yaw, elev, out) { const y = yaw * D, e = elev * D; return out.set(Math.sin(y) * Math.cos(e), Math.sin(e), Math.cos(y) * Math.cos(e)); }
+function setSwing(a) {
+  let yaw, elev;
+  if (a <= 0.4) { const u = easeIn(a / 0.4); yaw = -15 + 105 * u; elev = 62 - 57 * u; }
+  else { const u = easeOut((a - 0.4) / 0.6); yaw = 90 + 175 * u; elev = 5 + 40 * u; }
+  batDir(yaw, elev, tmp);
+  bat.position.copy(HANDS); bat.quaternion.setFromUnitVectors(UP, tmp);
+  batter.hands[0].position.copy(HANDS).addScaledVector(tmp, 0.04);
+  batter.hands[1].position.copy(HANDS).addScaledVector(tmp, 0.16);
+  batter.torso.rotation.y = 0.9 * smooth(clamp01(a / 0.55));
+}
+const K = HANDS.clone().addScaledVector(batDir(90, 5, new THREE.Vector3()), 0.72); // contact point
+const R = new THREE.Vector3(-0.3, 1.65, -17.85);                                     // release point
+const pQ = 1 - 1.6 / R.distanceTo(K);
+function pitchPos(p, out) { out.lerpVectors(R, K, p); out.y -= 0.35 * Math.sin(Math.PI * p); return out; }
+function setPitcher(t) {
+  const h = pitcher.hands[0].position, keys = [
+    [0, [0.05, 0.78, 0.3]], [0.35, [0, 1.0, 0.15]], [0.7, [-0.38, 1.25, -0.45]], [0.85, [-0.3, 1.35, 0.55]], [1.2, [0.2, 0.55, 0.65]]];
+  let i = 0; while (i < keys.length - 2 && t > keys[i + 1][0]) i++;
+  const [t0, a] = keys[i], [t1, b] = keys[i + 1], u = smooth(clamp01((t - t0) / (t1 - t0)));
+  h.set(a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u);
+  pitcher.torso.rotation.x = t < 0.7 ? -0.25 * smooth(clamp01(t / 0.7)) : -0.25 + 0.6 * smooth(clamp01((t - 0.7) / 0.3));
+  pitcher.feet[0].position.y = 0.05 + 0.35 * Math.sin(Math.PI * clamp01((t - 0.3) / 0.55));
+}
+
+// ---------- ball, glow, trail
+const ball = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), new THREE.MeshPhongMaterial({ color: '#ffffff', emissive: '#555', shininess: 30 }));
+scene.add(ball);
+const glowTex = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const x = cv.getContext('2d');
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,250,220,1)'); g.addColorStop(0.35, 'rgba(255,210,90,.55)'); g.addColorStop(1, 'rgba(255,160,40,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(cv); })();
+const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+glow.scale.set(1.4, 1.4, 1); scene.add(glow);
+const trail = [], hist = [];
+for (let i = 0; i < 12; i++) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.12 * (1 - i / 13), 6, 5), new THREE.MeshBasicMaterial({ color: '#ffe08a', transparent: true, opacity: 0.6 * (1 - i / 12), depthWrite: false }));
+  m.visible = false; scene.add(m); trail.push(m);
+}
+
+// ---------- fx: particle bursts, shards
+const bursts = [];
+function burst(pos, o) {
+  const n = o.n || 90, geo = new THREE.BufferGeometry(), P = new Float32Array(n * 3), C = new Float32Array(n * 3), V = [];
+  const pal = (o.colors || ['#fff']).map(c => new THREE.Color(c));
+  for (let i = 0; i < n; i++) {
+    P.set([pos.x, pos.y, pos.z], i * 3);
+    const c = pal[i % pal.length]; C.set([c.r, c.g, c.b], i * 3);
+    const v = new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize().multiplyScalar(o.speed * rnd(0.6, 1));
+    if (o.push) v.add(o.push);
+    V.push(v);
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(C, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size: o.size, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  scene.add(pts); bursts.push({ pts, V, age: 0, life: o.life, g: o.gravity ?? 6 });
+}
+function firework() {
+  const sets = [['#ff5a5a', '#ffd23d'], ['#5ad1ff', '#ffffff'], ['#b47cff', '#f08bd0'], ['#7dff8a', '#ffd23d']];
+  burst(polar(rnd(-40, 40), rnd(135, 175), rnd(42, 70)), { n: 110, speed: 15, size: 1.8, life: 1.9, colors: sets[Math.floor(Math.random() * sets.length)] });
+}
+const shards = [];
+const shardGeo = new THREE.BoxGeometry(1, 1, 0.25);
+function shatter(t) {
+  const bb = new THREE.Box3().setFromObject(t.obj), size = bb.getSize(new THREE.Vector3());
+  t.obj.visible = false;
+  const n = t === TARGETS.car ? 26 : 48, s = Math.max(size.x, size.y, size.z) / 12;
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(shardGeo, fmat(t.colors[i % t.colors.length]));
+    m.position.set(rnd(bb.min.x, bb.max.x), rnd(bb.min.y, bb.max.y), rnd(bb.min.z, bb.max.z));
+    m.scale.setScalar(s * rnd(0.5, 1.6));
+    const v = dir.clone().multiplyScalar(rnd(6, 18)).add(new THREE.Vector3(rnd(-7, 7), rnd(2, 12), rnd(-7, 7)));
+    scene.add(m); shards.push({ m, v, w: new THREE.Vector3(rnd(-9, 9), rnd(-9, 9), rnd(-9, 9)) });
+  }
+}
+
+// ---------- overlay helpers
+const body = document.body;
+function pop(text, small) {
+  const el = $('#pop'); el.textContent = text; el.classList.toggle('small', !!small);
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+function flash() { if (reduced) return; const f = $('#flash'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on'); }
+let shakeAmp = 0;
+const shake = a => { if (!reduced) shakeAmp = Math.max(shakeAmp, a); };
+
+// ---------- options & state
+const opt = { target: 'board', brk: true, short: false, slow: false };
+let T, H, dir, perp, side, tgt, fCur, crossed, impactDone, ballFree, ballVel, ballVisible, cheer, tube, fwTimer, distTimer;
+const camChase = new THREE.Vector3(), lookChase = new THREE.Vector3();
+
+function flightPos(f, out) { out.lerpVectors(K, T, f); out.y = K.y + (T.y - K.y) * f + 4 * H * f * (1 - f); return out; }
+function setCam(px, py, pz, lx, ly, lz) { camera.position.set(px, py, pz); camera.lookAt(lx, ly, lz); }
+const C0 = [0.35, 2.3, 5.6, -0.15, 0.9, -18];
+
+function doImpact(silent) {
+  if (impactDone) return; impactDone = true;
+  flightPos(1, ball.position);
+  ballFree = true;
+  if (tgt.kind === 'stands') {
+    ballVel = dir.clone().multiplyScalar(5).add(new THREE.Vector3(0, 6, 0));
+    if (!silent) { pop('落入觀眾席', true); }
+  } else if (opt.brk) {
+    shatter(tgt);
+    ballVel = dir.clone().multiplyScalar(22).add(new THREE.Vector3(0, 2, 0));
+    burst(T, { n: 70, speed: 9, size: 0.7, life: 0.7, colors: ['#fff6c0', '#ffd23d', '#ff9d3d'], gravity: 14 });
+    if (tgt === TARGETS.light) burst(T, { n: 120, speed: 16, size: 0.9, life: 1.2, colors: ['#ffffff', '#fff4c8', '#9fd3ff'], gravity: 18 });
+    if (!silent) { pop(tgt.brk); shake(0.9); flash(); }
+  } else {
+    ballVel = dir.clone().multiplyScalar(-9).add(new THREE.Vector3(0, 4, 0));
+    burst(T, { n: 30, speed: 5, size: 0.5, life: 0.5, colors: ['#ffffff', '#ffd23d'], gravity: 10 });
+    if (!silent) { pop(tgt.hit, true); shake(0.45); }
+  }
+}
+
+// ---------- shots
+const CHIP_KEYS = ['投球', '揮棒特寫', '擊球特寫', '飛越全壘打牆', '撞擊', '飛距離'];
+$('#chips').innerHTML = CHIP_KEYS.map((k, i) => `<span class="chip" data-i="${i}"><b>${i + 1}</b>${k}</span>`).join('');
+
+function buildShots() {
+  const sh = opt.short;
+  const list = [];
+  list.push({ chip: 0, cap: ['1x', '打者背後視角：投手投球，玩家看準時機點螢幕揮棒。'], dur: 1.55,
+    update(t) {
+      setCam(...C0); setPitcher(t); setSwing(0);
+      batter.feet[1].position.y = 0.05 + 0.12 * Math.sin(Math.PI * clamp01((t - 1.05) / 0.45));
+      if (t < 0.85) pitcher.hands[0].getWorldPosition(ball.position); else pitchPos(pQ * (t - 0.85) / 0.7, ball.position);
+    } });
+  list.push({ chip: 1, rate: sh ? 1.5 : 1, cap: ['0.1x', '慢動作＋低角度特寫：打者全力揮棒。擊中瞬間停格、閃光、畫面震動。'], dur: 1.4, cine: true,
+    enter() { hit = false; },
+    update(t) {
+      const u = clamp01(t / 1.4);
+      setCam(1.15 - 0.2 * u, 0.7 + 0.08 * u, -2.0 + 0.3 * u, -0.4, 0.95, 0.2);
+      if (t < 0.9) { pitchPos(pQ + (1 - pQ) * t / 0.9, ball.position); setSwing(0.4 * clamp01((t - 0.25) / 0.65)); }
+      else if (t < 1.08) {
+        if (!hit) { hit = true; ball.position.copy(K); setSwing(0.4); flash(); shake(0.12); pop('PERFECT!');
+          burst(K, { n: 50, speed: 3, size: 0.12, life: 0.45, colors: ['#ffffff', '#ffe08a'], gravity: 0 }); }
+      } else { const v = (t - 1.08) / 0.32; setSwing(0.4 + 0.22 * v); fCur = 0.004 * v; flightPos(fCur, ball.position); ballVisible = 'flight'; }
+    } });
+  if (!sh) list.push({ chip: 2, cap: ['0.3x → 1x', '打者斜後方的低角度：打者送棒，球拖著光軌飛走，速度線，慢動作慢慢恢復正常速度。'], dur: 1.0, cine: true,
+    enter() { $('#speed').classList.add('on'); },
+    update(t) {
+      setSwing(0.62 + 0.38 * clamp01(t / 0.6));
+      fCur = 0.004 + 0.056 * easeIn(clamp01(t / 1.0)); flightPos(fCur, ball.position);
+      camera.position.copy(K).addScaledVector(dir, -3.2).addScaledVector(perp, 2.4 * side); camera.position.y = 1.1;
+      tmp.set(-0.6, 1.3, 0.2).lerp(ball.position, 0.55); camera.lookAt(tmp);
+    } });
+  const flyDur = (sh ? 1.2 : 1.6) + (tgt.r - 128) / 40;
+  list.push({ chip: 3, cap: ['1x', '追球鏡頭：跟著球飛向外野。越過全壘打牆時放煙火、觀眾跳起來。'], dur: flyDur, cine: true,
+    enter() { this.f0 = fCur; if (sh) $('#speed').classList.add('on');
+      flightPos(this.f0, tmp); camChase.copy(tmp).addScaledVector(dir, -9).addScaledVector(perp, 2.5); camChase.y += 3.5; lookChase.copy(tmp).addScaledVector(dir, 15); },
+    update(t, dt) {
+      setSwing(1);
+      fCur = this.f0 + (0.88 - this.f0) * clamp01(t / this.dur); flightPos(fCur, ball.position);
+      tmp.copy(ball.position).addScaledVector(dir, -9).addScaledVector(perp, 2.5); tmp.y += 3.5;
+      const k = 1 - Math.exp(-dt * 6); camChase.lerp(tmp, k);
+      tmp2.copy(ball.position).addScaledVector(dir, 15); tmp2.y -= 2; lookChase.lerp(tmp2, k);
+      camera.position.copy(camChase); camera.lookAt(lookChase);
+      if (t > 0.4) $('#speed').classList.remove('on');
+      if (!crossed && Math.hypot(ball.position.x, ball.position.z) >= 120) { crossed = true; pop('HOME RUN!!'); cheer = 1; firework(); firework(); }
+    } });
+  list.push({ chip: 4, rate: sh ? 1.3 : 1, cap: ['1x', tgt.kind === 'stands' ? '切到落點旁的鏡頭：球落入觀眾席彈跳。' : '切到設施旁的鏡頭：球撞上設施，有機率打碎，碎片四散。'], dur: 2.0, cine: true,
+    enter() { this.f0 = fCur; },
+    update(t) {
+      camera.position.copy(T).addScaledVector(dir, -24).addScaledVector(perp, 16 * side); camera.position.y = T.y + 4;
+      camera.lookAt(T.x, T.y - 1, T.z);
+      if (!impactDone) { fCur = this.f0 + (1 - this.f0) * clamp01(t / 0.4); flightPos(fCur, ball.position); if (t >= 0.4) doImpact(false); }
+    } });
+  list.push({ chip: 5, rate: sh ? 1.6 : 1, cap: ['1x', '高空俯瞰：畫出這一球的飛行軌跡，顯示飛距離。'], dur: 2.6, cine: true,
+    enter() {
+      $('#speed').classList.remove('on');
+      const pts = []; for (let i = 0; i <= 40; i++) pts.push(flightPos(i / 40, new THREE.Vector3()));
+      tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 60, 0.45, 6), new THREE.MeshBasicMaterial({ color: '#ffc83d', fog: false }));
+      scene.add(tube);
+      const d = Math.round(tgt.r); $('#dist').classList.add('show');
+      const t0 = performance.now(); clearInterval(distTimer);
+      distTimer = setInterval(() => { const u = clamp01((performance.now() - t0) / 700); $('#distN').textContent = Math.round(d * easeOut(u)); if (u >= 1) clearInterval(distTimer); }, 30);
+    },
+    update(t) {
+      const u = smooth(clamp01(t / 2.6));
+      camera.position.set(0, 0, 0).addScaledVector(dir, -32 - 6 * u).addScaledVector(perp, 12 * side); camera.position.y = 46 + 6 * u;
+      camera.lookAt(T.x * 0.62, 0, T.z * 0.62);
+    } });
+  list.push({ chip: -1, cap: ['1x', '回到打擊畫面，準備下一球。被打碎的設施先保持壞掉的樣子（要不要這樣，待討論）。'], dur: 1.3,
+    enter() { $('#dist').classList.remove('show'); if (tube) { scene.remove(tube); tube = null; } this.p = camera.position.clone(); this.q = camera.quaternion.clone(); },
+    update(t) {
+      const u = smooth(clamp01(t / 1.3));
+      setCam(...C0); const q = camera.quaternion.clone();
+      camera.position.lerpVectors(this.p, new THREE.Vector3(C0[0], C0[1], C0[2]), u);
+      camera.quaternion.copy(this.q).slerp(q, u);
+      setPitcher(0); setSwing(0);
+    } });
+  return list;
+}
+let shots = [], cur = -1, st = 0, hit = false;
+
+function enter(i) {
+  cur = i; st = 0;
+  const s = shots[i];
+  if (!s) { cur = -1; body.classList.remove('cine'); ballVisible = 'hand'; ballFree = false; $('#caption').innerHTML = '流程結束。按「重播」再看一次，或換一個落點。'; markChips(-1, true); return; }
+  s.enter && s.enter();
+  body.classList.toggle('cine', !!s.cine);
+  $('#caption').innerHTML = `<span class="rate">${s.cap[0]}</span>${s.cap[1]}`;
+  markChips(s.chip, false);
+}
+function markChips(on, allDone) {
+  document.querySelectorAll('.chip').forEach(c => {
+    const i = +c.dataset.i;
+    c.classList.toggle('on', i === on);
+    c.classList.toggle('done', allDone || (on >= 0 ? i < on : i <= 5 && cur > 0));
+  });
+}
+function reset() {
+  Object.values(TARGETS).forEach(t => t.obj && (t.obj.visible = true));
+  shards.forEach(s => { scene.remove(s.m); s.m.material.dispose(); }); shards.length = 0;
+  bursts.forEach(b => { scene.remove(b.pts); b.pts.geometry.dispose(); }); bursts.length = 0;
+  if (tube) { scene.remove(tube); tube = null; }
+  hist.length = 0; trail.forEach(m => m.visible = false);
+  $('#dist').classList.remove('show'); $('#speed').classList.remove('on'); $('#pop').classList.remove('show');
+  tgt = TARGETS[opt.target]; T = polar(tgt.phi, tgt.r, tgt.y); H = tgt.r * 0.17;
+  dir = new THREE.Vector3(Math.sin(tgt.phi * D), 0, -Math.cos(tgt.phi * D));
+  perp = new THREE.Vector3(Math.cos(tgt.phi * D), 0, Math.sin(tgt.phi * D));
+  side = tgt.phi >= 0 ? -1 : 1;
+  fCur = 0; crossed = false; impactDone = false; ballFree = false; ballVel = new THREE.Vector3(); ballVisible = 'hand'; cheer = 0; fwTimer = 0; shakeAmp = 0;
+  setPitcher(0); setSwing(0); batter.feet[1].position.y = 0.05;
+}
+function play() { reset(); shots = buildShots(); enter(0); }
+function skip() {
+  if (cur < 1 || !shots[cur] || !shots[cur].cine || shots[cur].chip >= 5) return;
+  if (!crossed) { crossed = true; cheer = 1; firework(); }
+  doImpact(true); setSwing(1);
+  enter(shots.findIndex(s => s.chip === 5));
+}
+
+// ---------- UI wiring
+$('#tgt').innerHTML = Object.entries(TARGETS).map(([k, t]) => `<button class="opt" data-k="${k}" aria-pressed="${k === opt.target}">${t.label}</button>`).join('');
+$('#tgt').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  opt.target = b.dataset.k; document.querySelectorAll('#tgt .opt').forEach(x => x.setAttribute('aria-pressed', x === b)); play();
+});
+const toggle = (id, key, after) => $(id).addEventListener('click', () => { opt[key] = !opt[key]; $(id).setAttribute('aria-pressed', opt[key]); after && after(); });
+toggle('#optBrk', 'brk', play);
+toggle('#optShort', 'short', play);
+toggle('#optSlow', 'slow');
+opt.pawa = true;
+toggle('#optStyle', 'pawa', () => { useStyle(opt.pawa ? 'pawa' : 'flat'); $('#optStyle').textContent = opt.pawa ? '實況風角色' : '色塊風角色'; play(); });
+$('#play').addEventListener('click', play);
+$('#c').addEventListener('pointerdown', skip);
+
+// ---------- loop
+let last = performance.now(), clock = 0;
+const dummy = new THREE.Object3D();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const sdt = dt * (opt.slow ? 0.5 : 1); clock += sdt;
+  if (cur >= 0) {
+    const s = shots[cur]; st += sdt * (s.rate || 1);
+    s.update(Math.min(st, s.dur), sdt * (s.rate || 1));
+    if (st >= s.dur) enter(cur + 1);
+  } else { setCam(...C0); }
+
+  // ball after impact
+  if (ballFree) {
+    ballVel.y -= 22 * sdt; ball.position.addScaledVector(ballVel, sdt);
+    const r = Math.hypot(ball.position.x, ball.position.z);
+    const floor = r > 123 && r < 136 && Math.abs(Math.atan2(ball.position.x, -ball.position.z) / D) < 50 ? standsY(r) : 0;
+    if (ball.position.y < floor + 0.13) { ball.position.y = floor + 0.13; ballVel.y = Math.abs(ballVel.y) * 0.45; ballVel.x *= 0.7; ballVel.z *= 0.7; }
+  }
+  if (ballVisible === 'hand' && cur < 0) pitcher.hands[0].getWorldPosition(ball.position);
+  glow.position.copy(ball.position);
+  glow.visible = cur >= 0 && shots[cur] && shots[cur].chip >= 1 && shots[cur].chip <= 4;
+
+  // trail
+  const flying = glow.visible && (fCur > 0 || ballFree);
+  if (flying) { hist.unshift(ball.position.clone()); if (hist.length > 26) hist.pop(); } else hist.length = 0;
+  trail.forEach((m, i) => { const p = hist[i * 2 + 1]; m.visible = !!p; if (p) m.position.copy(p); });
+
+  // bursts
+  for (let i = bursts.length - 1; i >= 0; i--) {
+    const b = bursts[i]; b.age += sdt;
+    const P = b.pts.geometry.attributes.position;
+    b.V.forEach((v, j) => { v.y -= b.g * sdt; v.multiplyScalar(0.985); P.setXYZ(j, P.getX(j) + v.x * sdt, P.getY(j) + v.y * sdt, P.getZ(j) + v.z * sdt); });
+    P.needsUpdate = true; b.pts.material.opacity = 1 - b.age / b.life;
+    if (b.age >= b.life) { scene.remove(b.pts); b.pts.geometry.dispose(); bursts.splice(i, 1); }
+  }
+  if (cheer > 0.05 && cur >= 0) { fwTimer -= sdt; if (fwTimer <= 0) { firework(); fwTimer = rnd(0.35, 0.7); } }
+
+  // shards
+  shards.forEach(s => {
+    if (s.rest) return;
+    s.v.y -= 22 * sdt; s.m.position.addScaledVector(s.v, sdt);
+    s.m.rotation.x += s.w.x * sdt; s.m.rotation.y += s.w.y * sdt; s.m.rotation.z += s.w.z * sdt;
+    const r = Math.hypot(s.m.position.x, s.m.position.z);
+    const floor = r > 123 && r < 136 ? standsY(r) : 0;
+    if (s.m.position.y < floor + 0.1) { s.m.position.y = floor + 0.1; s.v.y *= -0.3; s.v.x *= 0.5; s.v.z *= 0.5; s.w.multiplyScalar(0.5); if (Math.abs(s.v.y) < 0.6) s.rest = true; }
+  });
+
+  // crowd
+  if (cheer > 0.01) {
+    for (let i = 0; i < CROWD_N; i++) {
+      const c = crowdBase[i]; dummy.position.copy(c.p); dummy.position.y += Math.max(0, Math.sin(clock * 11 + c.ph)) * 0.6 * cheer;
+      dummy.rotation.y = Math.atan2(-c.p.x, -c.p.z); dummy.updateMatrix(); crowd.setMatrixAt(i, dummy.matrix);
+    }
+    crowd.instanceMatrix.needsUpdate = true;
+    if (cur < 0) cheer *= Math.exp(-sdt * 0.8);
+  }
+
+  // shake
+  if (shakeAmp > 0.001) {
+    camera.position.x += rnd(-1, 1) * shakeAmp; camera.position.y += rnd(-1, 1) * shakeAmp;
+    shakeAmp *= Math.exp(-dt * 9);
+  }
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+resize(); reset(); setCam(...C0);
+requestAnimationFrame(frame);
+setTimeout(play, 700);
+})();
+</script>
