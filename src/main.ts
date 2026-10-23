@@ -8,6 +8,7 @@ import { localSettings } from './app/settings';
 import { mountSettingsScreen } from './app/settingsScreen';
 import { localBestScoreStorage } from './app/storage';
 import { createAtBat } from './render/atBat';
+import { createCinematicOverlay } from './render/cinematicOverlay';
 import { createHud } from './render/hud';
 import { buildStadium } from './render/stadium';
 import { createView } from './render/view';
@@ -15,20 +16,27 @@ import { createView } from './render/view';
 const canvas = document.querySelector<HTMLCanvasElement>('#stage');
 const hudRoot = document.querySelector<HTMLElement>('#hud');
 const screensRoot = document.querySelector<HTMLElement>('#screens');
-if (!canvas || !hudRoot || !screensRoot) throw new Error('#stage / #hud / #screens missing');
+const cinematicRoot = document.querySelector<HTMLElement>('#cinematic');
+if (!canvas || !hudRoot || !screensRoot || !cinematicRoot) throw new Error('#stage / #hud / #screens / #cinematic missing');
 
 const view = createView(canvas);
 buildStadium(view.scene);
 const hud = createHud(hudRoot);
 const settings = localSettings();
 const feedback = createFeedback(settings.get);
-const atBat = createAtBat(view.scene, view.camera, hud, {
+const atBat = createAtBat(view.scene, view.camera, hud, createCinematicOverlay(cinematicRoot), {
   swing: () => feedback.play('swing'),
   result: (result) => {
     if (!result.ball) return;
     feedback.play('hit');
     feedback.vibrate(result.kind === 'homeRun' ? [40, 60, 80] : 30);
-    if (result.kind === 'homeRun') feedback.play('homeRun', 250);
+  },
+  // 全壘打演出 beats: the fanfare on "HOME RUN!!", the crash (and a buzz) on 打碎.
+  homeRun: () => feedback.play('homeRun'),
+  impact: (result) => {
+    if (result.landing.kind !== 'facility' || !result.landing.smashed) return;
+    feedback.play('smash');
+    feedback.vibrate([70, 40, 140]);
   },
 });
 const storage = localBestScoreStorage();

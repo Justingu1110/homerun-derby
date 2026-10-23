@@ -1,5 +1,7 @@
 import { Mesh, MeshPhongMaterial, SphereGeometry, Vector3, type Camera, type Scene } from 'three';
-import type { BattedBall, Landing, Pitch, PitchResult, Round, RoundState } from '../core';
+import type { BattedBall, HomeRun, Pitch, PitchResult, Round, RoundState } from '../core';
+import { createCinematic } from './cinematic';
+import type { CinematicOverlay } from './cinematicOverlay';
 import { toWorld } from './coords';
 import { createFacilityView } from './facilities';
 import type { Hud } from './hud';
@@ -19,10 +21,8 @@ import { CONTACT_POINT, RELEASE_POINT, createBatter, createPitcher } from './pla
 const SHOW = {
   /** Pause before the first pitch, ms. */
   firstPitchDelayMs: 800,
-  /** Out: time from result to the next pitch (spec: within ~1.5 s). */
+  /** Out: time from result to the next pitch (spec: within ~1.5 s). The camera stays put. */
   outPauseMs: 1500,
-  /** Home run: time after the ball lands before the next pitch. */
-  homeRunPauseMs: 1200,
   /** Bat reaches the plate this long after the tap, then follows through. */
   swingToContactMs: 70,
   swingFollowMs: 260,
@@ -63,16 +63,13 @@ type Phase =
   | { name: 'waiting'; untilMs: number }
   | { name: 'pitch'; pitch: Pitch; startMs: number; swingAtMs: number | null; result: PitchResult | null; flight: Flight | null; nextAtMs: number };
 
+/** An 出局's batted ball (a 全壘打 flies inside the 全壘打演出 instead). */
 interface Flight {
   from: Vector3;
   to: Vector3;
   apex: number;
   startMs: number;
   durationMs: number;
-  /** 全壘打 only: where it lands; the impact plays once when the flight ends. */
-  landing: Landing | null;
-  ball: BattedBall;
-  impacted: boolean;
 }
 
 export interface AtBat {
@@ -92,14 +89,30 @@ export interface AtBatEvents {
   swing?(): void;
   /** A pitch was decided (swing or no swing). result.ball is set when the bat touched the ball. */
   result?(result: PitchResult): void;
+  /** 全壘打演出: the ball cleared the wall ("HOME RUN!!"). */
+  homeRun?(result: HomeRun): void;
+  /** 全壘打演出: the ball reached its 設施 or the stands; result.landing.smashed says 打碎. */
+  impact?(result: HomeRun): void;
 }
 
-export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBatEvents = {}): AtBat {
+export function createAtBat(scene: Scene, camera: Camera, hud: Hud, overlay: CinematicOverlay, events: AtBatEvents = {}): AtBat {
   const pitcher = createPitcher(scene);
   const batter = createBatter(scene);
   const facilities = createFacilityView(scene);
   const ball = new Mesh(new SphereGeometry(0.13, 12, 10), new MeshPhongMaterial({ color: '#ffffff', emissive: '#555555', shininess: 30 }));
   scene.add(ball);
+  const cinematic = createCinematic(
+    { scene, camera, ball, batter, pitcher, facilities, overlay },
+    {
+      homeRun: (r) => events.homeRun?.(r),
+      impact: (r) => events.impact?.(r),
+      returning: () => {
+        hud.cinematic(false);
+        if (round) hud.showRound(round.state());
+      },
+    },
+  );
+  let lastNowMs = -Infinity;
   const pitchDir = new Vector3().subVectors(CONTACT_POINT, RELEASE_POINT);
   let phase: Phase = { name: 'idle' };
   let round: Round | null = null;
@@ -125,12 +138,9 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBa
     return out;
   };
 
-  const launch = (b: BattedBall, from: Vector3, atMs: number, landing: Landing | null): Flight => ({
+  const launch = (b: BattedBall, from: Vector3, atMs: number): Flight => ({
     from: from.clone(),
-    to: landing ? facilities.impactPoint(b, landing) : toWorld(b.angle, b.distance, 0.13),
-    landing,
-    ball: b,
-    impacted: false,
+    to: toWorld(b.angle, b.distance, 0.13),
     apex: Math.max(SHOW.minApex, b.distance * SHOW.apexPerMetre),
     startMs: atMs,
     durationMs: (SHOW.hangBaseS + b.distance / SHOW.hangPerMetre) * 1000,
@@ -139,17 +149,21 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBa
   const resolve = (p: Extract<Phase, { name: 'pitch' }>, result: PitchResult, atMs: number) => {
     p.result = result;
     events.result?.(result);
+    if (result.kind === 'homeRun') {
+      // The 全壘打演出 owns the screen; the next pitch waits for its end.
+      hud.cinematic(true);
+      cinematic.play(result, (u, out) => pitchPos(p.pitch, u, out), atMs);
+      p.nextAtMs = Infinity;
+      return;
+    }
     if (result.timing) hud.showTiming(result.timing);
     hud.showResult(result);
     hud.showRound(round!.state());
     if (result.ball) {
       const from = pitchPos(p.pitch, Math.max(0, (atMs - p.startMs - p.pitch.releaseMs) / p.pitch.flightMs), new Vector3());
-      p.flight = launch(result.ball, from, atMs, result.kind === 'homeRun' ? result.landing : null);
+      p.flight = launch(result.ball, from, atMs);
     }
-    p.nextAtMs =
-      result.kind === 'homeRun' && p.flight
-        ? p.flight.startMs + p.flight.durationMs + SHOW.homeRunPauseMs
-        : atMs + SHOW.outPauseMs;
+    p.nextAtMs = atMs + SHOW.outPauseMs;
   };
 
   const startPitch = (atMs: number) => {
@@ -193,6 +207,8 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBa
     },
 
     swing(atMs) {
+      // A tap during the 全壘打演出 skips to the 飛距離 shot.
+      if (cinematic.playing()) return cinematic.skip(Math.max(atMs, lastNowMs));
       if (phase.name !== 'pitch' || phase.swingAtMs !== null || phase.result) return;
       const elapsed = atMs - phase.startMs;
       if (elapsed > phase.pitch.swingDeadlineMs) return;
@@ -204,7 +220,9 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBa
     },
 
     update(now) {
+      lastNowMs = now;
       facilities.update(now);
+      cinematic.update(now);
       if (phase.name === 'idle' || phase.name === 'waiting') {
         pitcher.setWindup(0);
         pitcher.hand.getWorldPosition(ball.position);
@@ -214,6 +232,16 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBa
         return;
       }
       const p = phase;
+      if (p.result?.kind === 'homeRun') {
+        if (cinematic.playing()) {
+          ball.scale.setScalar(Math.max(1, ball.position.distanceTo(camera.position) / SHOW.ballVisibleDistance));
+          return;
+        }
+        // It just ended (the camera is back behind the batter): next pitch or end of 一局.
+        if (round!.state().over) endRound();
+        else startPitch(now);
+        return;
+      }
       const elapsed = now - p.startMs;
       const { releaseMs, flightMs } = p.pitch;
 
@@ -242,13 +270,6 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBa
       const f = p.flight;
       if (f && now >= f.startMs) {
         flightPos(f, now, ball.position);
-        const endMs = f.startMs + f.durationMs;
-        if (f.landing && !f.impacted && now >= endMs) {
-          f.impacted = true;
-          facilities.impact(f.ball, f.landing, endMs, new Vector3().subVectors(f.to, f.from));
-        }
-        // A ball that hit a 設施 drops out of sight behind it.
-        if (f.impacted && f.landing?.kind === 'facility') ball.visible = false;
       } else if (elapsed < releaseMs) pitcher.hand.getWorldPosition(ball.position);
       else {
         pitchPos(p.pitch, (elapsed - releaseMs) / flightMs, ball.position);

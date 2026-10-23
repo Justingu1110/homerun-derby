@@ -12,6 +12,8 @@ export interface Hud {
   clear(): void;
   /** Hint shown until the first swing. */
   hint(on: boolean): void;
+  /** While the 全壘打演出 plays, the HUD steps aside (it owns the screen). */
+  cinematic(on: boolean): void;
   /** Top bar during 一局: 分數, 難度倍率, 出局 dots. null hides it. */
   showRound(state: RoundState | null): void;
 }
@@ -57,6 +59,9 @@ export function createHud(root: HTMLElement): Hud {
       result.textContent = '';
       timing.classList.remove('pop');
       result.classList.remove('pop');
+    },
+    cinematic(on) {
+      root.classList.toggle('is-cinematic', on);
     },
     hint(on) {
       hintEl.hidden = !on;
