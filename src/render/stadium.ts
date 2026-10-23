@@ -49,7 +49,7 @@ const COLORS = {
 } as const;
 
 /** Stands geometry: a sloped ring just behind the outfield wall. */
-const STANDS = {
+export const STANDS = {
   innerRadius: FIELD.fenceDistance + 3,
   outerRadius: FIELD.fenceDistance + 16,
   rise: 12,

@@ -49,7 +49,7 @@ const lightTower = (id: string, angle: number): Facility => ({
 });
 
 /** Parking deck beyond the right-center stands: two rows of cars on its roof. */
-const PARKING = { firstAngle: 6.4, step: 1.75, slots: 4, rows: [144, 150], roof: 15 } as const;
+const PARKING = { firstAngle: 6.4, step: 2.2, slots: 3, rows: [144, 150], roof: 18 } as const;
 
 const cars = (): Facility[] =>
   PARKING.rows.flatMap((distance, row) =>
@@ -59,7 +59,7 @@ const cars = (): Facility[] =>
       angle: PARKING.firstAngle + slot * PARKING.step,
       distance,
       height: PARKING.roof + 1.2,
-      width: 4.4,
+      width: 5.5,
       reach: row === 0 ? { near: 133, far: 147 } : { near: 147, far: 165 },
     })),
   );
