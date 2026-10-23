@@ -24,6 +24,9 @@ const SHOW = {
   /** Bat reaches the plate this long after the tap, then follows through. */
   swingToContactMs: 70,
   swingFollowMs: 260,
+  /** Batter's stride: front foot lifts this long before contact and is planted this long before it. */
+  strideLiftBeforeContactMs: 520,
+  strideLandBeforeContactMs: 90,
   /** Batted-ball hang time = base + distance / perMetre (seconds). */
   hangBaseS: 0.9,
   hangPerMetre: 60,
@@ -114,6 +117,7 @@ export function createAtBat(scene: Scene, camera: Camera, round: Round, hud: Hud
   const startPitch = (atMs: number) => {
     hud.clear();
     batter.setSwing(0);
+    batter.setStride(0);
     phase = { name: 'pitch', pitch: round.nextPitch(), startMs: atMs, swingAtMs: null, result: null, flight: null, nextAtMs: Infinity };
   };
 
@@ -150,7 +154,11 @@ export function createAtBat(scene: Scene, camera: Camera, round: Round, hud: Hud
           : WINDUP_RELEASE + (WINDUP_END - WINDUP_RELEASE) * clamp01((elapsed - releaseMs) / FOLLOW_THROUGH_MS),
       );
 
-      // Batter.
+      // Batter: stride timed to the pitch, swing timed to the tap.
+      batter.setStride(
+        (elapsed - (p.pitch.contactMs - SHOW.strideLiftBeforeContactMs)) /
+          (SHOW.strideLiftBeforeContactMs - SHOW.strideLandBeforeContactMs),
+      );
       if (p.swingAtMs !== null) {
         const s = now - p.swingAtMs;
         batter.setSwing(s < SHOW.swingToContactMs ? 0.4 * (s / SHOW.swingToContactMs) : 0.4 + 0.6 * clamp01((s - SHOW.swingToContactMs) / SHOW.swingFollowMs));
