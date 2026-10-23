@@ -526,11 +526,12 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
     },
 
     update(now) {
+      const p = plan;
+      // Cues first: what they spawn is then drawn as of `now`, even after a long frame.
+      if (p) fireDue(p, now);
       bursts.update(now);
       crowd.update(now);
-      const p = plan;
       if (!p) return;
-      fireDue(p, now);
       if (now >= p.endMs) {
         finish(p);
         overlay.render(now, reduced());

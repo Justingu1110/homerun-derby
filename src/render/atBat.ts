@@ -221,8 +221,9 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, overlay: Cin
 
     update(now) {
       lastNowMs = now;
-      facilities.update(now);
+      // Cinematic first: its cues may start a 設施 impact that must be drawn as of `now`.
       cinematic.update(now);
+      facilities.update(now);
       if (phase.name === 'idle' || phase.name === 'waiting') {
         pitcher.setWindup(0);
         pitcher.hand.getWorldPosition(ball.position);
