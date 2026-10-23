@@ -36,7 +36,7 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
     </section>
     <section class="screen screen-result" hidden>
       <h2 class="result-heading">一局結束</h2>
-      <div class="result-record" data-record hidden>新紀錄！</div>
+      <div class="result-record" data-record hidden>新最高分！</div>
       <div class="result-score"><span class="label">分數</span><span class="value" data-score></span></div>
       <dl class="result-stats">
         <div><dt>全壘打</dt><dd data-home-runs></dd></div>
@@ -73,7 +73,7 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
   return {
     showTitle(best) {
       const bestEl = field('best');
-      bestEl.textContent = best ? String(best.score) : '還沒有紀錄';
+      bestEl.textContent = best ? String(best.score) : '還沒有最高分';
       bestEl.classList.toggle('is-empty', !best);
       field('best-note').textContent = best?.pitchSettings ? describePitchSettings(best.pitchSettings) : '';
       show(title);

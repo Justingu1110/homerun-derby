@@ -62,7 +62,7 @@ const BEAT = {
   contactS: 0.9,
   /** …the hit-stop holds until here, then the ball leaves. */
   releaseS: 1.08,
-  /** The 揮棒特寫 starts the replayed pitch this far (m) before the bat. */
+  /** The 揮棒特寫 starts its slow-motion re-run of the pitch this far (m) before the bat. */
   approachM: 1.6,
   /** Flight fraction (0 = bat, 1 = landing) at the end of: 揮棒特寫, 擊球特寫, chase. */
   fSwing: 0.004,
@@ -133,7 +133,7 @@ export interface CinematicCues {
 export interface Cinematic {
   /**
    * Plays the 全壘打演出 for `result` (its `cinematic` picks full or short), starting at atMs.
-   * `approach(p, out)` is the pitch path (p = 1 at the contact point), for the slowed replay.
+   * `approach(p, out)` is the pitch path (p = 1 at the contact point), for the slow-motion re-run of the pitch.
    */
   play(result: HomeRun, approach: (p: number, out: Vector3) => Vector3, atMs: number): void;
   /** True from play() until the last shot ends. */

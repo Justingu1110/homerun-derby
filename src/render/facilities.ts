@@ -74,7 +74,7 @@ const ADS: Record<string, { lines: string[]; bg: string; fg: string }> = {
   'billboard-L2': { lines: ['炸雞 24H'], bg: '#ffc83d', fg: '#4a1d00' },
   'billboard-L3': { lines: ['MOONSHOT'], bg: '#121a55', fg: '#ffc83d' },
   'billboard-L4': { lines: ['手套 5 折'], bg: '#ffffff', fg: '#1a2256' },
-  'billboard-R3': { lines: ['HR BANK'], bg: '#1f8a5b', fg: '#ffffff' },
+  'billboard-R3': { lines: ['HOMERUN BANK'], bg: '#1f8a5b', fg: '#ffffff' },
   'billboard-R4': { lines: ['打中這塊', '送你一台車'], bg: '#ff7a1a', fg: '#ffffff' },
 };
 
@@ -172,7 +172,7 @@ function billboard(f: Facility): Model {
 function scoreboard(f: Facility): Model {
   const root = placed(f);
   const h = 12;
-  const lines = ['HOME RUN DERBY', 'HR ★ ★ ★'];
+  const lines = ['HOME RUN DERBY', '全壘打 ★ ★ ★'];
   const intact = box(f.width, h, 1.5, faced(signTexture(lines, COLORS.scoreboardBg, COLORS.scoreboardFg, 640, 300)));
   intact.position.y = f.height;
   for (const x of [-f.width * 0.35, f.width * 0.35]) {
