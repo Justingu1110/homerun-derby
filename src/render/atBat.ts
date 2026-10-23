@@ -49,6 +49,14 @@ const FOLLOW_THROUGH_MS = 350;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
+/**
+ * Height offset of a 曲球 over its flight, in units of its dropM: 0 at release and
+ * at the contact point, peaks at +1 a little past halfway, then falls fastest at
+ * the plate. Past the plate it carries on down at that slope.
+ */
+const CURVE_PEAK = 1 / (2 / (3 * Math.sqrt(3))); // normalises p(1 − p²) to a peak of 1
+const curveBreak = (p: number) => (p <= 1 ? CURVE_PEAK * p * (1 - p * p) : -2 * CURVE_PEAK * (p - 1));
+
 type Phase =
   | { name: 'idle' }
   | { name: 'waiting'; untilMs: number }
@@ -70,7 +78,7 @@ export interface AtBat {
   /** A tap at this high-resolution timestamp (pointer event timeStamp). */
   swing(atMs: number): void;
   /** Current pitch timing, for automated checks (?debug). */
-  debug(): { startMs: number; contactMs: number; result: PitchResult | null; round: RoundState | null } | null;
+  debug(): { startMs: number; contactMs: number; pitch: Pitch; result: PitchResult | null; round: RoundState | null } | null;
 }
 
 export function createAtBat(scene: Scene, camera: Camera, hud: Hud): AtBat {
@@ -84,10 +92,15 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud): AtBat {
   let onRoundOver: ((state: RoundState) => void) | null = null;
   let swungOnce = false;
 
-  /** Ball on its way to the plate; p = 0 at release, 1 at the contact point, > 1 past the plate. */
-  const pitchPos = (p: number, out: Vector3) => {
+  /**
+   * Ball on its way to the plate; p = 0 at release, 1 at the contact point, > 1 past the plate.
+   * A 曲球 (dropM > 0) leaves the hand on a rising hump, then breaks down ever faster
+   * into the contact point, and keeps falling past it.
+   */
+  const pitchPos = (pitch: Pitch, p: number, out: Vector3) => {
     out.copy(RELEASE_POINT).addScaledVector(pitchDir, p);
     if (p <= 1) out.y -= SHOW.pitchSag * Math.sin(Math.PI * p);
+    out.y += pitch.dropM * curveBreak(p);
     return out;
   };
 
@@ -112,7 +125,7 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud): AtBat {
     hud.showResult(result);
     hud.showRound(round!.state());
     if (result.ball) {
-      const from = pitchPos(Math.max(0, (atMs - p.startMs - p.pitch.releaseMs) / p.pitch.flightMs), new Vector3());
+      const from = pitchPos(p.pitch, Math.max(0, (atMs - p.startMs - p.pitch.releaseMs) / p.pitch.flightMs), new Vector3());
       p.flight = launch(result.ball, from, atMs);
     }
     p.nextAtMs =
@@ -155,7 +168,7 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud): AtBat {
 
     debug() {
       return phase.name === 'pitch'
-        ? { startMs: phase.startMs, contactMs: phase.pitch.contactMs, result: phase.result, round: round!.state() }
+        ? { startMs: phase.startMs, contactMs: phase.pitch.contactMs, pitch: phase.pitch, result: phase.result, round: round!.state() }
         : null;
     },
 
@@ -207,7 +220,7 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud): AtBat {
       if (p.flight && now >= p.flight.startMs) flightPos(p.flight, now, ball.position);
       else if (elapsed < releaseMs) pitcher.hand.getWorldPosition(ball.position);
       else {
-        pitchPos((elapsed - releaseMs) / flightMs, ball.position);
+        pitchPos(p.pitch, (elapsed - releaseMs) / flightMs, ball.position);
         ball.visible = ball.position.z < SHOW.catcherZ;
       }
 
