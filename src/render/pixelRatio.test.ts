@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createPixelRatioGovernor } from './pixelRatio';
+import { createPixelRatioGovernor, wantsAntialias } from './pixelRatio';
 
 /** Feeds `n` frames of `dtMs` and returns the ratios it switched to. */
 const run = (g: ReturnType<typeof createPixelRatioGovernor>, n: number, dtMs: number) => {
@@ -53,5 +53,14 @@ describe('pixel ratio: sharp where the phone keeps up, lower where it does not',
       if (r !== null) changes.push(r);
     }
     expect(changes).toEqual([]);
+  });
+});
+
+describe('antialiasing (MSAA) only where edges would show', () => {
+  it('is on for screens under 2 device pixels per CSS pixel and off for phone screens at 2 and up', () => {
+    expect(wantsAntialias(1)).toBe(true);
+    expect(wantsAntialias(1.5)).toBe(true);
+    expect(wantsAntialias(2)).toBe(false);
+    expect(wantsAntialias(3)).toBe(false);
   });
 });

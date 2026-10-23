@@ -1,5 +1,5 @@
 import { PerspectiveCamera, Scene, WebGLRenderer } from 'three';
-import { createPixelRatioGovernor } from './pixelRatio';
+import { createPixelRatioGovernor, wantsAntialias } from './pixelRatio';
 
 /** Default camera: behind and slightly above the batter, looking out at the pitcher's mound. */
 export const BATTER_VIEW = {
@@ -17,7 +17,7 @@ export interface View {
 
 /** Full-screen renderer + camera that refits itself on resize and rotation. */
 export function createView(canvas: HTMLCanvasElement): View {
-  const renderer = new WebGLRenderer({ canvas, antialias: true });
+  const renderer = new WebGLRenderer({ canvas, antialias: wantsAntialias(window.devicePixelRatio) });
   const scene = new Scene();
   const camera = new PerspectiveCamera(60, 1, 0.1, 1500);
   const pixelRatio = createPixelRatioGovernor(window.devicePixelRatio);

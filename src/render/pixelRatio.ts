@@ -47,3 +47,10 @@ export function createPixelRatioGovernor(devicePixelRatio: number): PixelRatioGo
     },
   };
 }
+
+/**
+ * MSAA costs ~20% frame time (measured under swiftshader at ratio 1) and is
+ * invisible at 2+ device pixels per CSS pixel, which is nearly every phone.
+ * Decided once from the device, since the renderer can't change it later.
+ */
+export const wantsAntialias = (devicePixelRatio: number) => (devicePixelRatio || 1) < 2;
