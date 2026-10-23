@@ -287,6 +287,14 @@ function parkingDeck(cars: Facility[]): Object3D {
   return g;
 }
 
+/** What the 全壘打演出 pops up when a 全壘打 reaches each kind of 設施: a hit, or an 打碎. */
+export const FACILITY_POP: Record<FacilityKind, { hit: string; smash: string }> = {
+  billboard: { hit: '砰！擊中看板', smash: '看板粉碎！' },
+  scoreboard: { hit: '砰！擊中計分板', smash: '計分板爆裂！' },
+  lightTower: { hit: '鏘！擊中照明燈', smash: '照明燈打爆！' },
+  car: { hit: '砰！砸中車頂', smash: '車窗碎裂！' },
+};
+
 function buildModel(f: Facility, paint: () => string): Model {
   const builders: Record<FacilityKind, () => Model> = {
     billboard: () => billboard(f),

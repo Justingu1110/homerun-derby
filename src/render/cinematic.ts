@@ -8,11 +8,12 @@ import {
   type Camera,
   type Scene,
 } from 'three';
-import { FIELD, type FacilityKind, type HomeRun, type TimingGrade } from '../core';
+import { FIELD, type HomeRun, type TimingGrade } from '../core';
 import { bouncePath, createBallFx, createBursts, createCrowd, TRAIL, type BurstSpec } from './cinematicFx';
 import type { CinematicOverlay } from './cinematicOverlay';
 import { seededRandom } from './coords';
-import type { FacilityView } from './facilities';
+import { FACILITY_POP, type FacilityView } from './facilities';
+import { TIMING_LABEL } from './hud';
 import { CONTACT_POINT, RELEASE_POINT, type Batter, type Pitcher } from './players';
 import { BATTER_VIEW } from './view';
 
@@ -104,10 +105,11 @@ const FX = {
   tubeColor: '#ffc83d',
 } as const;
 
-/** Words that pop up. */
-const TIMING_POP: Record<TimingGrade, string> = { perfect: 'PERFECT!', early: '太早！', late: '太晚！' };
-const SMASH_POP: Record<FacilityKind, string> = { billboard: '看板粉碎！', scoreboard: '計分板爆裂！', lightTower: '照明燈打爆！', car: '車窗碎裂！' };
-const HIT_POP: Record<FacilityKind, string> = { billboard: '砰！擊中看板', scoreboard: '砰！擊中計分板', lightTower: '鏘！擊中照明燈', car: '砰！砸中車頂' };
+/** Words that pop up (the 設施 ones are FACILITY_POP). The 時機評價 is the HUD's label, shouted: PERFECT!, 太早！. */
+const timingPop = (grade: TimingGrade) => {
+  const label = TIMING_LABEL[grade];
+  return /[\x20-\x7e]$/.test(label) ? `${label.toUpperCase()}!` : `${label}！`;
+};
 const STANDS_POP = '落入觀眾席';
 
 export interface CinematicCast {
@@ -351,7 +353,7 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
     if (quiet) return;
     flash(ms);
     shake(p, ms, FX.shakeContact);
-    overlay.pop(TIMING_POP[p.result.timing], ms, p.result.timing !== 'perfect');
+    overlay.pop(timingPop(p.result.timing), ms, p.result.timing !== 'perfect');
     burst(FX.contactSparkle, CONTACT_POINT.clone(), ms);
   };
   const fireCross = (p: Plan, ms: number, quiet: boolean) => {
@@ -373,14 +375,14 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
       burst(FX.smashSparks, p.to.clone(), ms);
       if (landing.facility.kind === 'lightTower') burst(FX.lampBurst, p.to.clone(), ms);
       if (!quiet) {
-        overlay.pop(SMASH_POP[landing.facility.kind], ms, false, 1);
+        overlay.pop(FACILITY_POP[landing.facility.kind].smash, ms, false, 1);
         shake(p, ms, FX.shakeSmash);
         flash(ms);
       }
     } else {
       burst(FX.hitSparks, p.to.clone(), ms);
       if (!quiet) {
-        overlay.pop(HIT_POP[landing.facility.kind], ms, true, 1);
+        overlay.pop(FACILITY_POP[landing.facility.kind].hit, ms, true, 1);
         shake(p, ms, FX.shakeHit);
       }
     }
