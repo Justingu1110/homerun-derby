@@ -176,6 +176,15 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, overlay: Cin
     phase = { name: 'pitch', pitch: round!.nextPitch(), startMs: atMs, swingAtMs: null, result: null, flight: null, nextAtMs: Infinity };
   };
 
+  /** After a result has been shown: the next pitch, or the end of 一局. */
+  const advance = (atMs: number) => {
+    if (round!.state().over) endRound();
+    else startPitch(atMs);
+  };
+
+  /** Far away the ball grows so it stays visible. */
+  const scaleBall = () => ball.scale.setScalar(Math.max(1, ball.position.distanceTo(camera.position) / SHOW.ballVisibleDistance));
+
   const endRound = () => {
     const state = round!.state();
     const done = onRoundOver;
@@ -237,13 +246,9 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, overlay: Cin
       }
       const p = phase;
       if (p.result?.kind === 'homeRun') {
-        if (cinematic.playing()) {
-          ball.scale.setScalar(Math.max(1, ball.position.distanceTo(camera.position) / SHOW.ballVisibleDistance));
-          return;
-        }
-        // It just ended (the camera is back behind the batter): next pitch or end of 一局.
-        if (round!.state().over) endRound();
-        else startPitch(now);
+        if (cinematic.playing()) scaleBall();
+        // It just ended (the camera is back behind the batter).
+        else advance(now);
         return;
       }
       const elapsed = now - p.startMs;
@@ -283,12 +288,8 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, overlay: Cin
         ball.visible = ball.position.z < SHOW.catcherZ;
       }
 
-      ball.scale.setScalar(Math.max(1, ball.position.distanceTo(camera.position) / SHOW.ballVisibleDistance));
-
-      if (now >= p.nextAtMs) {
-        if (round!.state().over) endRound();
-        else startPitch(now);
-      }
+      scaleBall();
+      if (now >= p.nextAtMs) advance(now);
     },
   };
 }
