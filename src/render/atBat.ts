@@ -81,7 +81,15 @@ export interface AtBat {
   debug(): { startMs: number; contactMs: number; pitch: Pitch; result: PitchResult | null; round: RoundState | null } | null;
 }
 
-export function createAtBat(scene: Scene, camera: Camera, hud: Hud): AtBat {
+/** Moments the app layer reacts to (音效, 震動). All optional. */
+export interface AtBatEvents {
+  /** A tap was taken as a 揮棒. */
+  swing?(): void;
+  /** A pitch was decided (swing or no swing). result.ball is set when the bat touched the ball. */
+  result?(result: PitchResult): void;
+}
+
+export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBatEvents = {}): AtBat {
   const pitcher = createPitcher(scene);
   const batter = createBatter(scene);
   const ball = new Mesh(new SphereGeometry(0.13, 12, 10), new MeshPhongMaterial({ color: '#ffffff', emissive: '#555555', shininess: 30 }));
@@ -121,6 +129,7 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud): AtBat {
 
   const resolve = (p: Extract<Phase, { name: 'pitch' }>, result: PitchResult, atMs: number) => {
     p.result = result;
+    events.result?.(result);
     if (result.timing) hud.showTiming(result.timing);
     hud.showResult(result);
     hud.showRound(round!.state());
@@ -179,6 +188,7 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud): AtBat {
       phase.swingAtMs = atMs;
       if (!swungOnce) hud.hint(false);
       swungOnce = true;
+      events.swing?.();
       resolve(phase, round!.swing(elapsed - phase.pitch.contactMs), atMs);
     },
 

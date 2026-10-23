@@ -1,8 +1,11 @@
 import './style.css';
 import { readBestScore, startRound } from './core';
+import { createFeedback } from './app/feedback';
 import { createPitchSettingsScreen } from './app/pitchSettingsScreen';
 import { localPitchSettingsStorage } from './app/pitchSettingsStorage';
 import { createScreens } from './app/screens';
+import { localSettings } from './app/settings';
+import { mountSettingsScreen } from './app/settingsScreen';
 import { localBestScoreStorage } from './app/storage';
 import { createAtBat } from './render/atBat';
 import { createHud } from './render/hud';
@@ -17,7 +20,17 @@ if (!canvas || !hudRoot || !screensRoot) throw new Error('#stage / #hud / #scree
 const view = createView(canvas);
 buildStadium(view.scene);
 const hud = createHud(hudRoot);
-const atBat = createAtBat(view.scene, view.camera, hud);
+const settings = localSettings();
+const feedback = createFeedback(settings.get);
+const atBat = createAtBat(view.scene, view.camera, hud, {
+  swing: () => feedback.play('swing'),
+  result: (result) => {
+    if (!result.ball) return;
+    feedback.play('hit');
+    feedback.vibrate(result.kind === 'homeRun' ? [40, 60, 80] : 30);
+    if (result.kind === 'homeRun') feedback.play('homeRun', 250);
+  },
+});
 const storage = localBestScoreStorage();
 const pitchSettingsStorage = localPitchSettingsStorage();
 
@@ -28,7 +41,7 @@ const showTitle = () => {
 };
 const play = () => {
   screens.hide();
-  atBat.play(startRound({ random: Math.random, storage, pitchSettings: pitchSettingsStorage.load() }), performance.now(), (state) => {
+  atBat.play(startRound({ random: Math.random, storage, pitchSettings: pitchSettingsStorage.load(), randomness: settings.get().randomness }), performance.now(), (state) => {
     hud.showRound(null);
     screens.showResult(state);
   });
@@ -41,7 +54,13 @@ const openPitchSettings = () => {
   screens.hide();
   pitchSettingsScreen.show();
 };
-const screens = createScreens(screensRoot, { start: play, backToTitle: showTitle, pitchSettings: openPitchSettings });
+const screens = createScreens(screensRoot, {
+  start: play,
+  backToTitle: showTitle,
+  settings: () => screens.showSettings(),
+  pitchSettings: openPitchSettings,
+});
+mountSettingsScreen(screens.settingsPanel, settings);
 showTitle();
 
 // Swing on any tap. event.timeStamp is a high-resolution time on the same clock

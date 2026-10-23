@@ -8,6 +8,9 @@ import { describePitchSettings } from './pitchSettingsScreen';
 export interface Screens {
   showTitle(best: BestScore | null): void;
   showResult(state: RoundState): void;
+  /** The 設定 screen; its contents are filled by mountSettingsScreen(settingsPanel). */
+  showSettings(): void;
+  readonly settingsPanel: HTMLElement;
   hide(): void;
 }
 
@@ -15,6 +18,7 @@ export interface ScreenActions {
   start(): void;
   backToTitle(): void;
   pitchSettings(): void;
+  settings(): void;
 }
 
 const metres = (m: number) => `${Math.round(m)} m`;
@@ -27,7 +31,7 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
       <div class="screen-buttons">
         <button type="button" class="btn btn-primary" data-action="start">開始</button>
         <button type="button" class="btn" data-action="pitch-settings">投球設定</button>
-        <button type="button" class="btn" disabled title="即將推出">設定</button>
+        <button type="button" class="btn" data-action="settings">設定</button>
       </div>
     </section>
     <section class="screen screen-result" hidden>
@@ -43,9 +47,11 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
         <button type="button" class="btn btn-primary" data-action="again">再玩一次</button>
         <button type="button" class="btn" data-action="title">回標題</button>
       </div>
-    </section>`;
+    </section>
+    <section class="screen screen-settings" hidden></section>`;
   const title = root.querySelector<HTMLElement>('.screen-title')!;
   const result = root.querySelector<HTMLElement>('.screen-result')!;
+  const settings = root.querySelector<HTMLElement>('.screen-settings')!;
   const field = (name: string) => root.querySelector<HTMLElement>(`[data-${name}]`)!;
 
   // Buttons act on click; their pointerdown must not reach the swing handler.
@@ -55,11 +61,11 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
     if (action === 'start' || action === 'again') actions.start();
     else if (action === 'title') actions.backToTitle();
     else if (action === 'pitch-settings') actions.pitchSettings();
+    else if (action === 'settings') actions.settings();
   });
 
   const show = (screen: HTMLElement | null) => {
-    title.hidden = screen !== title;
-    result.hidden = screen !== result;
+    for (const s of root.querySelectorAll<HTMLElement>('.screen')) s.hidden = s !== screen;
     root.hidden = !screen;
     screen?.querySelector<HTMLElement>('.btn-primary')?.focus({ preventScroll: true });
   };
@@ -80,6 +86,10 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
       field('total').textContent = metres(state.totalDistance);
       field('longest').textContent = state.longest ? metres(state.longest.distance) : '—';
       show(result);
+    },
+    settingsPanel: settings,
+    showSettings() {
+      show(settings);
     },
     hide() {
       show(null);
