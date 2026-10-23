@@ -1,6 +1,7 @@
 import { recordIfBest, type BestScoreStorage } from './bestScore';
 import { difficultyMultiplier, homeRunPoints } from './difficulty';
 import { FIELD } from './field';
+import { createFacilities, type Landing } from './facilities';
 import { DEFAULT_PITCH_SETTINGS, type PitchSettings, type PitchType } from './pitchSettings';
 import { TUNING } from './tuning';
 
@@ -56,6 +57,8 @@ export interface HomeRun {
   kind: 'homeRun';
   timing: TimingGrade;
   ball: BattedBall;
+  /** Where it ends up: the 設施 it hit (and whether this hit 打碎 it), or the stands. */
+  landing: Landing;
 }
 
 export interface Out {
@@ -89,6 +92,8 @@ export interface RoundState {
   longest: BattedBall | null;
   /** Set when the round ends: this round beat the 最高分 (and was stored as the new one). */
   newBest: boolean;
+  /** Ids of the 設施 打碎 so far this round, in order. They stay 打碎 until the round ends. */
+  smashed: readonly string[];
 }
 
 export interface Round {
@@ -114,6 +119,7 @@ export function startRound(options: RoundOptions): Round {
   let totalDistance = 0;
   let longest: BattedBall | null = null;
   let newBest = false;
+  const facilities = createFacilities(random);
   const takePitch = () => {
     if (!current) throw new Error('No pitch in flight: call nextPitch() first');
     const pitch = current;
@@ -135,7 +141,7 @@ export function startRound(options: RoundOptions): Round {
   const isOver = () => outs >= TUNING.round.maxOuts;
   return {
     state() {
-      return { outs, maxOuts: TUNING.round.maxOuts, over: isOver(), score, multiplier, homeRuns, totalDistance, longest, newBest };
+      return { outs, maxOuts: TUNING.round.maxOuts, over: isOver(), score, multiplier, homeRuns, totalDistance, longest, newBest, smashed: facilities.smashed() };
     },
     nextPitch() {
       if (isOver()) throw new Error('The round is over');
@@ -144,7 +150,8 @@ export function startRound(options: RoundOptions): Round {
     },
     swing(timingErrorMs) {
       takePitch();
-      return record(judgeSwing(timingErrorMs, randomness, random));
+      const judged = judgeSwing(timingErrorMs, randomness, random);
+      return record(judged.kind === 'homeRun' ? { ...judged, landing: facilities.land(judged.ball) } : judged);
     },
     noSwing() {
       takePitch();
@@ -167,7 +174,7 @@ function throwPitch(settings: PitchSettings, random: RandomSource): Pitch {
   return { type, speedKmh, releaseMs: windupMs, flightMs, contactMs, swingDeadlineMs, dropM };
 }
 
-function judgeSwing(timingErrorMs: number, randomness: number, random: RandomSource): PitchResult {
+function judgeSwing(timingErrorMs: number, randomness: number, random: RandomSource): Out | Omit<HomeRun, 'landing'> {
   const timing = grade(timingErrorMs);
   if (Math.abs(timingErrorMs) > TUNING.swing.contactWindowMs) return { kind: 'out', out: 'whiff', timing, ball: null };
   // A Perfect swing is never jittered: it is always the same home run.

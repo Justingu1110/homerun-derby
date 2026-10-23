@@ -1,6 +1,7 @@
 import { Mesh, MeshPhongMaterial, SphereGeometry, Vector3, type Camera, type Scene } from 'three';
-import type { BattedBall, Pitch, PitchResult, Round, RoundState } from '../core';
+import type { BattedBall, Landing, Pitch, PitchResult, Round, RoundState } from '../core';
 import { toWorld } from './coords';
+import { createFacilityView } from './facilities';
 import type { Hud } from './hud';
 import { CONTACT_POINT, RELEASE_POINT, createBatter, createPitcher } from './players';
 
@@ -68,6 +69,10 @@ interface Flight {
   apex: number;
   startMs: number;
   durationMs: number;
+  /** 全壘打 only: where it lands; the impact plays once when the flight ends. */
+  landing: Landing | null;
+  ball: BattedBall;
+  impacted: boolean;
 }
 
 export interface AtBat {
@@ -92,6 +97,7 @@ export interface AtBatEvents {
 export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBatEvents = {}): AtBat {
   const pitcher = createPitcher(scene);
   const batter = createBatter(scene);
+  const facilities = createFacilityView(scene);
   const ball = new Mesh(new SphereGeometry(0.13, 12, 10), new MeshPhongMaterial({ color: '#ffffff', emissive: '#555555', shininess: 30 }));
   scene.add(ball);
   const pitchDir = new Vector3().subVectors(CONTACT_POINT, RELEASE_POINT);
@@ -115,13 +121,16 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBa
   const flightPos = (f: Flight, t: number, out: Vector3) => {
     const u = clamp01((t - f.startMs) / f.durationMs);
     out.lerpVectors(f.from, f.to, u);
-    out.y = f.from.y * (1 - u) + 4 * f.apex * u * (1 - u);
+    out.y = f.from.y * (1 - u) + f.to.y * u + 4 * f.apex * u * (1 - u);
     return out;
   };
 
-  const launch = (b: BattedBall, from: Vector3, atMs: number): Flight => ({
+  const launch = (b: BattedBall, from: Vector3, atMs: number, landing: Landing | null): Flight => ({
     from: from.clone(),
-    to: toWorld(b.angle, b.distance, 0.13),
+    to: landing ? facilities.impactPoint(b, landing) : toWorld(b.angle, b.distance, 0.13),
+    landing,
+    ball: b,
+    impacted: false,
     apex: Math.max(SHOW.minApex, b.distance * SHOW.apexPerMetre),
     startMs: atMs,
     durationMs: (SHOW.hangBaseS + b.distance / SHOW.hangPerMetre) * 1000,
@@ -135,7 +144,7 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBa
     hud.showRound(round!.state());
     if (result.ball) {
       const from = pitchPos(p.pitch, Math.max(0, (atMs - p.startMs - p.pitch.releaseMs) / p.pitch.flightMs), new Vector3());
-      p.flight = launch(result.ball, from, atMs);
+      p.flight = launch(result.ball, from, atMs, result.kind === 'homeRun' ? result.landing : null);
     }
     p.nextAtMs =
       result.kind === 'homeRun' && p.flight
@@ -147,6 +156,7 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBa
     hud.clear();
     batter.setSwing(0);
     batter.setStride(0);
+    facilities.sync(round!.state().smashed);
     phase = { name: 'pitch', pitch: round!.nextPitch(), startMs: atMs, swingAtMs: null, result: null, flight: null, nextAtMs: Infinity };
   };
 
@@ -172,6 +182,7 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBa
       hud.clear();
       hud.hint(!swungOnce);
       hud.showRound(r.state());
+      facilities.sync(r.state().smashed);
       phase = { name: 'waiting', untilMs: nowMs + SHOW.firstPitchDelayMs };
     },
 
@@ -193,6 +204,7 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBa
     },
 
     update(now) {
+      facilities.update(now);
       if (phase.name === 'idle' || phase.name === 'waiting') {
         pitcher.setWindup(0);
         pitcher.hand.getWorldPosition(ball.position);
@@ -227,8 +239,17 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, events: AtBa
 
       // Ball.
       ball.visible = true;
-      if (p.flight && now >= p.flight.startMs) flightPos(p.flight, now, ball.position);
-      else if (elapsed < releaseMs) pitcher.hand.getWorldPosition(ball.position);
+      const f = p.flight;
+      if (f && now >= f.startMs) {
+        flightPos(f, now, ball.position);
+        const endMs = f.startMs + f.durationMs;
+        if (f.landing && !f.impacted && now >= endMs) {
+          f.impacted = true;
+          facilities.impact(f.ball, f.landing, endMs, new Vector3().subVectors(f.to, f.from));
+        }
+        // A ball that hit a 設施 drops out of sight behind it.
+        if (f.impacted && f.landing?.kind === 'facility') ball.visible = false;
+      } else if (elapsed < releaseMs) pitcher.hand.getWorldPosition(ball.position);
       else {
         pitchPos(p.pitch, (elapsed - releaseMs) / flightMs, ball.position);
         ball.visible = ball.position.z < SHOW.catcherZ;

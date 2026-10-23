@@ -10,15 +10,26 @@ const swingOnce = (timingErrorMs: number, randomness: number | undefined, random
   return round.swing(timingErrorMs);
 };
 
+/**
+ * What 隨機幅度 decides: the kind, timing, ball and the 設施 it hits. Leaves out the
+ * 打碎 roll, which takes the random source at any 隨機幅度 (see facilities.test.ts).
+ */
+const judged = (r: PitchResult) => ({
+  kind: r.kind,
+  timing: r.timing,
+  ball: r.ball,
+  hit: r.kind === 'homeRun' ? (r.landing.kind === 'facility' ? r.landing.facility.id : 'stands') : null,
+});
+
 /** Timing errors outside the perfect window that still put the bat on the ball. */
 const CONTACT_ERRORS = [-60, -35, -20, 20, 35, 60];
 
 describe('隨機幅度 0%: the same timing always gives the same result', () => {
   it('ignores the random source entirely', () => {
     for (const err of CONTACT_ERRORS) {
-      const low = swingOnce(err, 0, fixed(0));
-      const mid = swingOnce(err, 0, fixed(0.5));
-      const high = swingOnce(err, 0, fixed(0.999));
+      const low = judged(swingOnce(err, 0, fixed(0)));
+      const mid = judged(swingOnce(err, 0, fixed(0.5)));
+      const high = judged(swingOnce(err, 0, fixed(0.999)));
       expect(low).toEqual(mid);
       expect(high).toEqual(mid);
     }
@@ -93,7 +104,7 @@ describe('隨機幅度 never touches a Perfect swing', () => {
       expect(expected).toMatchObject({ kind: 'homeRun', timing: 'perfect' });
       for (const randomness of [0.25, 0.5, 1]) {
         for (const v of [0, 0.3, 0.99999]) {
-          expect(swingOnce(err, randomness, fixed(v))).toEqual(expected);
+          expect(judged(swingOnce(err, randomness, fixed(v)))).toEqual(judged(expected));
         }
       }
     }
