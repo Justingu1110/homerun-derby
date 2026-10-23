@@ -107,8 +107,18 @@ describe('最高分', () => {
     const { storage, saved } = memoryStorage({ score: 100, totalDistance: 150 });
     const state = playRound(storage, [PERFECT, PERFECT]);
     expect(state.newBest).toBe(true);
-    expect(saved).toEqual([{ score: 200, totalDistance: state.totalDistance }]);
-    expect(readBestScore(storage)).toEqual({ score: 200, totalDistance: state.totalDistance });
+    expect(saved).toEqual([{ score: 200, totalDistance: state.totalDistance, pitchSettings: X1 }]);
+    expect(readBestScore(storage)).toEqual({ score: 200, totalDistance: state.totalDistance, pitchSettings: X1 });
+  });
+
+  it('the best score keeps the 投球設定 it was set with', () => {
+    const { storage, saved } = memoryStorage({ score: 100, totalDistance: 150, pitchSettings: X1 });
+    const hard: PitchSettings = { types: ['fastball', 'changeup', 'curveball'], speed: 'fast' };
+    const round = startRound({ random: fixed(0.5), pitchSettings: hard, storage });
+    pitchAndSwing(round, PERFECT);
+    while (!round.state().over) pitchAndSwing(round, WHIFF);
+    expect(saved).toEqual([{ score: 200, totalDistance: round.state().totalDistance, pitchSettings: hard }]);
+    expect(readBestScore(storage)?.pitchSettings).toEqual(hard);
   });
 
   it('the first round with a home run sets the best score on a fresh device', () => {

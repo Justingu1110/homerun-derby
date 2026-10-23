@@ -123,7 +123,7 @@ export function startRound(options: RoundOptions): Round {
       totalDistance += result.ball.distance;
       if (!longest || result.ball.distance > longest.distance) longest = result.ball;
     }
-    if (isOver()) newBest = recordIfBest(storage, { score, totalDistance });
+    if (isOver()) newBest = recordIfBest(storage, { score, totalDistance, pitchSettings });
     return result;
   };
   const isOver = () => outs >= TUNING.round.maxOuts;

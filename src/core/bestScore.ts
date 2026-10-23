@@ -1,8 +1,12 @@
-/** 最高分: one record per device. Ticket #5 adds the 投球設定 it was set with. */
+import type { PitchSettings } from './pitchSettings';
+
+/** 最高分: one record per device, whatever the 投球設定. */
 export interface BestScore {
   score: number;
   /** Total 飛距離 of that round (m): breaks a tie in 分數. */
   totalDistance: number;
+  /** The 投球設定 it was set with. Missing only on a record stored before 投球設定 existed. */
+  pitchSettings?: PitchSettings;
 }
 
 /**
@@ -27,7 +31,8 @@ export function readBestScore(storage: BestScoreStorage | undefined): BestScore 
 export function recordIfBest(storage: BestScoreStorage | undefined, result: BestScore): boolean {
   if (!beats(result, readBestScore(storage) ?? { score: 0, totalDistance: 0 })) return false;
   try {
-    storage?.save({ score: result.score, totalDistance: result.totalDistance });
+    const { score, totalDistance, pitchSettings } = result;
+    storage?.save(pitchSettings ? { score, totalDistance, pitchSettings } : { score, totalDistance });
   } catch {
     // Not saved, but it still was a record for this round.
   }
