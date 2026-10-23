@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TUNING, difficultyMultiplier, startRound, type Pitch, type PitchSettings, type PitchType } from './index';
+import { TUNING, difficultyMultiplier, parsePitchSettings, startRound, togglePitchType, type Pitch, type PitchSettings, type PitchType } from './index';
 
 const fixed = (v: number) => () => v;
 
@@ -129,5 +129,45 @@ describe('球種 behave differently in flight', () => {
       round.nextPitch();
       expect(round.swing(0)).toMatchObject({ kind: 'homeRun', timing: 'perfect' });
     }
+  });
+});
+
+describe('投球設定: at least one 球種 stays checked', () => {
+  it('checking a 球種 adds it; unchecking removes it', () => {
+    const one: PitchSettings = { types: ['fastball'], speed: 'fast' };
+    const two = togglePitchType(one, 'curveball');
+    expect(two).toEqual({ types: ['fastball', 'curveball'], speed: 'fast' });
+    expect(togglePitchType(two, 'fastball')).toEqual({ types: ['curveball'], speed: 'fast' });
+  });
+
+  it('keeps 球種 in display order (直球, 變速球, 曲球) whatever the click order', () => {
+    const s = togglePitchType(togglePitchType({ types: ['curveball'], speed: 'slow' }, 'fastball'), 'changeup');
+    expect(s.types).toEqual(['fastball', 'changeup', 'curveball']);
+  });
+
+  it('the last checked 球種 cannot be unchecked', () => {
+    const only: PitchSettings = { types: ['changeup'], speed: 'medium' };
+    expect(togglePitchType(only, 'changeup')).toEqual(only);
+  });
+
+  it('a round cannot start without a 球種', () => {
+    expect(() => startRound({ random: fixed(0.5), pitchSettings: { types: [], speed: 'medium' } })).toThrow();
+  });
+});
+
+describe('投球設定 read back from storage', () => {
+  it('accepts valid settings', () => {
+    expect(parsePitchSettings({ types: ['changeup', 'fastball'], speed: 'fast' })).toEqual({ types: ['fastball', 'changeup'], speed: 'fast' });
+  });
+
+  it.each([null, 'fast', 42, {}, { types: [], speed: 'fast' }, { types: ['knuckleball'], speed: 'fast' }, { types: ['fastball'], speed: 'warp' }, { types: 'fastball', speed: 'slow' }])(
+    'rejects %j',
+    (raw) => {
+      expect(parsePitchSettings(raw)).toBeNull();
+    },
+  );
+
+  it('drops duplicate 球種', () => {
+    expect(parsePitchSettings({ types: ['curveball', 'curveball'], speed: 'slow' })).toEqual({ types: ['curveball'], speed: 'slow' });
   });
 });

@@ -5,7 +5,7 @@ export { TUNING } from './tuning';
 export { readBestScore } from './bestScore';
 export type { BestScore, BestScoreStorage } from './bestScore';
 export { difficultyMultiplier, homeRunPoints } from './difficulty';
-export { DEFAULT_PITCH_SETTINGS, PITCH_TYPES, SPEED_LEVELS } from './pitchSettings';
+export { DEFAULT_PITCH_SETTINGS, PITCH_TYPES, SPEED_LEVELS, parsePitchSettings, togglePitchType } from './pitchSettings';
 export type { PitchSettings, SpeedLevel } from './pitchSettings';
 export { startRound } from './round';
 export type { BattedBall, HomeRun, Out, OutKind, Pitch, PitchResult, PitchType, RandomSource, Round, RoundOptions, RoundState, TimingGrade } from './round';

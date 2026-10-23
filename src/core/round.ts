@@ -100,6 +100,7 @@ export interface Round {
 export function startRound(options: RoundOptions): Round {
   const { random, storage, pitchSettings = DEFAULT_PITCH_SETTINGS } = options;
   let current: Pitch | null = null;
+  if (pitchSettings.types.length === 0) throw new Error('投球設定 needs at least one 球種');
   const multiplier = difficultyMultiplier(pitchSettings);
   let outs = 0;
   let score = 0;
