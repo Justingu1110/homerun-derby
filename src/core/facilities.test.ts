@@ -2,16 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { startRound, type PitchResult, type Round } from './index';
 
 const fixed = (v: number) => () => v;
+/** 隨機幅度 0, so a timing error always gives the same direction and 飛距離. */
+const start = (random: () => number) => startRound({ random, randomness: 0 });
 
 /**
- * Timing errors and where the ball goes with no 隨機幅度 (see TUNING):
+ * Timing errors and where the ball goes at 隨機幅度 0 (see TUNING):
  * 0 ms → 0°, 150 m; ±12 ms → ±6.6°, 138 m; +28 ms → 15.4°, 122 m; −18 ms → −9.9°, 132 m.
  */
 const swingOnce = (round: Round, err: number): PitchResult => {
   round.nextPitch();
   return round.swing(err);
 };
-const hit = (err: number, random = fixed(0.99)) => swingOnce(startRound({ random }), err);
+const hit = (err: number, random = fixed(0.99)) => swingOnce(start(random), err);
 const landingOf = (result: PitchResult) => {
   if (result.kind !== 'homeRun') throw new Error(`expected a home run, got ${result.out}`);
   return result.landing;
@@ -72,7 +74,7 @@ describe('打碎', () => {
 
 describe('打碎 lasts for the rest of 一局', () => {
   it('a smashed facility is listed in the round state and stays 打碎 on later pitches', () => {
-    const round = startRound({ random: fixed(0) });
+    const round = start(fixed(0));
     expect(round.state().smashed).toEqual([]);
     expect(landingOf(swingOnce(round, 0))).toMatchObject({ facility: { id: 'scoreboard' }, smashed: true });
     swingOnce(round, 400); // a whiff in between
@@ -80,14 +82,14 @@ describe('打碎 lasts for the rest of 一局', () => {
   });
 
   it('hitting an already smashed facility again is still a hit on it, but it can’t be 打碎 twice', () => {
-    const round = startRound({ random: fixed(0) });
+    const round = start(fixed(0));
     swingOnce(round, 0);
     expect(landingOf(swingOnce(round, 0))).toMatchObject({ kind: 'facility', facility: { id: 'scoreboard' }, smashed: false });
     expect(round.state().smashed).toEqual(['scoreboard']);
   });
 
   it('smashes add up across the round, in the order they happened', () => {
-    const round = startRound({ random: fixed(0) });
+    const round = start(fixed(0));
     swingOnce(round, 12);
     swingOnce(round, -12);
     const ids = round.state().smashed;
@@ -97,16 +99,16 @@ describe('打碎 lasts for the rest of 一局', () => {
   });
 
   it('a new 一局 starts with every facility restored', () => {
-    const first = startRound({ random: fixed(0) });
+    const first = start(fixed(0));
     swingOnce(first, 0);
-    const next = startRound({ random: fixed(0) });
+    const next = start(fixed(0));
     expect(next.state().smashed).toEqual([]);
     expect(landingOf(swingOnce(next, 0))).toMatchObject({ facility: { id: 'scoreboard' }, smashed: true });
   });
 
   it('打碎 a facility does not change the 分數', () => {
-    const smashing = startRound({ random: fixed(0) });
-    const intact = startRound({ random: fixed(0.99) });
+    const smashing = start(fixed(0));
+    const intact = start(fixed(0.99));
     expect(landingOf(swingOnce(smashing, 0))).toMatchObject({ smashed: true });
     expect(landingOf(swingOnce(intact, 0))).toMatchObject({ smashed: false });
     expect(smashing.state().score).toBe(intact.state().score);

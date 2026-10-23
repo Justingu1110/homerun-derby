@@ -11,6 +11,11 @@ export interface RoundOptions {
   random: RandomSource;
   /** Where the 最高分 is read and written when the round ends. Optional: without it nothing is stored. */
   storage?: BestScoreStorage;
+  /**
+   * 隨機幅度, 0–1 (the 設定 slider's 0–100%). Jitters the 飛距離 and direction of
+   * a ball the bat touched outside the perfect window. Default DEFAULT_RANDOMNESS.
+   */
+  randomness?: number;
 }
 
 export type PitchType = 'fastball';
@@ -98,7 +103,8 @@ export interface Round {
 }
 
 export function startRound(options: RoundOptions): Round {
-  const { random, storage } = options;
+  const { random, storage, randomness = TUNING.randomness.default } = options;
+  if (!(randomness >= 0 && randomness <= 1)) throw new RangeError(`randomness must be 0–1, got ${randomness}`);
   let current: Pitch | null = null;
   const multiplier = difficultyMultiplier();
   let outs = 0;
@@ -143,7 +149,7 @@ export function startRound(options: RoundOptions): Round {
     },
     swing(timingErrorMs) {
       takePitch();
-      const judged = judgeSwing(timingErrorMs);
+      const judged = judgeSwing(timingErrorMs, randomness, random);
       return record(judged.kind === 'homeRun' ? { ...judged, landing: facilities.land(judged.ball) } : judged);
     },
     noSwing() {
@@ -153,10 +159,11 @@ export function startRound(options: RoundOptions): Round {
   };
 }
 
-function judgeSwing(timingErrorMs: number): Out | Omit<HomeRun, 'landing'> {
+function judgeSwing(timingErrorMs: number, randomness: number, random: RandomSource): Out | Omit<HomeRun, 'landing'> {
   const timing = grade(timingErrorMs);
   if (Math.abs(timingErrorMs) > TUNING.swing.contactWindowMs) return { kind: 'out', out: 'whiff', timing, ball: null };
-  const ball = battedBall(timingErrorMs);
+  // A Perfect swing is never jittered: it is always the same home run.
+  const ball = timing === 'perfect' ? battedBall(timingErrorMs) : jitter(battedBall(timingErrorMs), randomness, random);
   if (Math.abs(ball.angle) > FIELD.foulLineAngle) return { kind: 'out', out: 'foul', timing, ball };
   if (ball.distance < FIELD.fenceDistance) return { kind: 'out', out: 'flyOut', timing, ball };
   return { kind: 'homeRun', timing, ball };
@@ -176,4 +183,16 @@ function battedBall(timingErrorMs: number): BattedBall {
       ? perfectDistance.max - (perfectDistance.max - perfectDistance.min) * (e / perfectWindowMs)
       : Math.max(minDistance, perfectDistance.min - (e - perfectWindowMs) * falloffMPerMs);
   return { distance, angle: timingErrorMs * TUNING.direction.degPerMs };
+}
+
+/** 隨機幅度: shift 飛距離 and direction by up to ±(randomness × max spread), uniformly. */
+function jitter(ball: BattedBall, randomness: number, random: RandomSource): BattedBall {
+  if (randomness === 0) return ball;
+  const { maxDistanceSpread, maxAngleSpreadDeg } = TUNING.randomness;
+  const d = 2 * random() - 1;
+  const a = 2 * random() - 1;
+  return {
+    distance: ball.distance * (1 + d * randomness * maxDistanceSpread),
+    angle: ball.angle + a * randomness * maxAngleSpreadDeg,
+  };
 }

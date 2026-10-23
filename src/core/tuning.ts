@@ -35,6 +35,14 @@ export const TUNING = {
     /** …but never below this (a weak dribbler). */
     minDistance: 15,
   },
+  randomness: {
+    /** 隨機幅度 when the player hasn't set one: 0.25 → about ±5% 飛距離. */
+    default: 0.25,
+    /** At 隨機幅度 100%, 飛距離 varies by up to ± this fraction… */
+    maxDistanceSpread: 0.2,
+    /** …and the direction angle by up to ± this many degrees. Both scale linearly with 隨機幅度. */
+    maxAngleSpreadDeg: 10,
+  },
   smash: {
     /** Chance that hitting a 設施 打碎 it, at the near and far 飛距離 (m); linear between, clamped outside. */
     near: { distance: 120, chance: 0.2 },
