@@ -111,6 +111,7 @@ button{font:inherit;color:inherit;cursor:pointer}
     <button class="opt" id="optShort" aria-pressed="false">精簡版</button>
     <button class="opt" id="optSlow" aria-pressed="false">慢速 0.5x</button>
     <button class="opt" id="optCams">換一組鏡頭</button>
+    <button class="opt" id="optMotion" aria-pressed="false">動作特寫</button>
     <button class="play" id="play">▶ 重播</button>
   </div>
   <div class="note" id="note">原型 v3：選難度會先播投手登場（名字、體型、球衣、特效都是暫定）。球出手時右下角顯示球種與球速。每次重播隨機挑一組鏡頭，按「換一組鏡頭」可以再換。距離改成英尺。<br><b id="combo"></b></div>
@@ -133,6 +134,7 @@ const renderer = new THREE.WebGLRenderer({ canvas: $('#c'), antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1500);
+const camTop = new THREE.PerspectiveCamera(42, 1, 0.1, 1500), camBot = new THREE.PerspectiveCamera(46, 1, 0.1, 1500);
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h, false);
@@ -410,37 +412,88 @@ let pitcher, diff;
 function useDiff(key) {
   DIFFS.forEach(d => d.pitcher.g.visible = d.key === key);
   diff = DIFFS.find(d => d.key === key); pitcher = diff.pitcher; pitcher.g.rotation.y = 0;
-  aura.setLevel(diff.fx);
+  aura.setLevel(diff.fx); measureRelease();
 }
 
 const batGeo = new THREE.CylinderGeometry(0.055, 0.028, 1.0, 8); batGeo.translate(0, 0.5, 0);
 const bat = new THREE.Mesh(batGeo, fmat('#d9a55b')); scene.add(bat);
-const HANDS = new THREE.Vector3(-0.53, 0.82, 0.2);
 const UP = new THREE.Vector3(0, 1, 0);
-const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3();
+const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3(), hand = new THREE.Vector3();
 function batDir(yaw, elev, out) { const y = yaw * D, e = elev * D; return out.set(Math.sin(y) * Math.cos(e), Math.sin(e), Math.cos(y) * Math.cos(e)); }
-function setSwing(a) {
-  let yaw, elev;
-  if (a <= 0.4) { const u = easeIn(a / 0.4); yaw = 20 + 70 * u; elev = 40 - 35 * u; }
-  else { const u = easeOut((a - 0.4) / 0.6); yaw = 90 + 175 * u; elev = 5 + 40 * u; }
-  batDir(yaw, elev, tmp);
-  if (!batFree) { bat.position.copy(HANDS); bat.quaternion.setFromUnitVectors(UP, tmp); }
-  batter.hands[0].position.copy(HANDS).addScaledVector(tmp, 0.04);
-  batter.hands[1].position.copy(HANDS).addScaledVector(tmp, 0.16);
-  batter.torso.rotation.y = 0.9 * smooth(clamp01(a / 0.55));
+// keyframe track: [[time, [values…]], …]; eased between keys unless linear
+function track(keys, t, linear) {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const [t0, a] = keys[i], [t1, b] = keys[i + 1];
+    if (t <= t1) { const u = linear ? (t - t0) / (t1 - t0) : smooth((t - t0) / (t1 - t0)); return a.map((v, j) => v + (b[j] - v) * u); }
+  }
+  return keys[keys.length - 1][1];
 }
-const K = HANDS.clone().addScaledVector(batDir(90, 5, new THREE.Vector3()), 0.72); // contact point
-const R = new THREE.Vector3(-0.3, 1.65, -17.85);                                     // release point
-const pQ = 1 - 1.6 / R.distanceTo(K);
+function applyBat(h, yaw, elev) {
+  batDir(yaw, elev, tmp);
+  if (!batFree) { bat.position.copy(h); bat.quaternion.setFromUnitVectors(UP, tmp); }
+  batter.hands[0].position.copy(h).addScaledVector(tmp, 0.04);
+  batter.hands[1].position.copy(h).addScaledVector(tmp, 0.16);
+}
+
+// ---- batter: waggle → load (hands back, front knee up) → stride → swing → high finish
+const PITCH_REL = 1.6;            // pitcher releases the ball this long into the pitch shot
+const ST_HAND = [[0, [-0.48, 0.95, 0.58]], [0.7, [-0.48, 0.95, 0.58]], [1.3, [-0.42, 1.12, 0.82]], [1.95, [-0.46, 1.06, 0.7]]];
+const ST_FRONT = [[0, [0.15, 0.06, 0.04]], [1.0, [0.15, 0.06, 0.04]], [1.4, [0.22, 0.4, 0.2]], [1.95, [0.55, 0.06, 0.04]]];
+function setStance(t) {
+  const load = smooth(clamp01((t - 0.7) / 0.6)), calm = 1 - load, stride = smooth(clamp01((t - 1.4) / 0.55));
+  const w = Math.sin(t * 5.5), w2 = Math.cos(t * 5.5);
+  const h = track(ST_HAND, t); hand.set(h[0] + 0.035 * w2 * calm, h[1] + 0.035 * w * calm, h[2]);
+  applyBat(hand, 10 + 8 * load + 20 * w * calm, 58 - 10 * load + 8 * w2 * calm);       // bat waggle, then still
+  batter.torso.rotation.set(0.14 - 0.06 * load, -0.15 - 0.45 * load + 0.25 * stride, 0.2 * load - 0.12 * stride); // lean over the plate, rock back, then forward
+  batter.torso.position.y = 0.34 - 0.05 * load + 0.02 * w * calm;
+  batter.head.rotation.set(-batter.torso.rotation.x, -batter.torso.rotation.y * 0.9, -batter.torso.rotation.z * 0.8);
+  batter.g.position.z = 0.2 + 0.05 * load - 0.13 * stride;                            // weight back, then forward
+  batter.feet[1].position.set(...track(ST_FRONT, t));
+  batter.feet[0].position.set(-0.15, 0.06, 0.05); batter.feet[0].rotation.set(0, 0, 0);
+}
+const SW_HAND = [[0, [-0.48, 1.04, 0.66]], [0.15, [-0.47, 0.95, 0.46]], [0.3, [-0.43, 0.86, 0.28]], [0.4, [-0.4, 0.82, 0.18]],
+                 [0.5, [-0.28, 0.85, 0.04]], [0.6, [-0.3, 0.93, -0.1]], [0.8, [-0.33, 1.12, -0.27]], [1, [-0.35, 1.25, -0.35]]];
+const SW_BAT = [[0, [15, 50]], [0.15, [24, 42]], [0.3, [52, 20]], [0.4, [90, 5]], [0.5, [122, 8]], [0.6, [152, 16]], [0.8, [195, 45]], [1, [220, 67]]];
+const SW_TWIST = [[0, [-0.4]], [0.2, [-0.1]], [0.4, [1.0]], [0.7, [1.55]], [1, [1.75]]];
+function setSwing(a) {
+  const h = track(SW_HAND, a, true), [yaw, elev] = track(SW_BAT, a, true), twist = track(SW_TWIST, a, true)[0];
+  hand.set(h[0], h[1], h[2]); applyBat(hand, yaw, elev);
+  batter.torso.rotation.set(0, twist, 0.06 - 0.2 * clamp01((a - 0.4) / 0.6));
+  batter.torso.position.y = 0.325 - 0.03 * Math.sin(Math.PI * clamp01(a / 0.7));
+  // eyes stay on the ball until contact, then follow it up
+  batter.head.rotation.set(-0.35 * smooth(clamp01((a - 0.4) / 0.4)), a < 0.4 ? -twist * 0.75 : -twist * 0.75 + (twist - 1.0) * 0.4, 0);
+  batter.feet[1].position.set(0.55, 0.06, 0.04); batter.g.position.z = 0.07;
+  const piv = smooth(clamp01((a - 0.2) / 0.45));
+  batter.feet[0].rotation.set(0.5 * piv, 1.1 * piv, 0); batter.feet[0].position.set(-0.13, 0.06 + 0.05 * piv, 0.05);
+}
+const K = new THREE.Vector3(...track(SW_HAND, 0.4, true)).addScaledVector(batDir(90, 5, new THREE.Vector3()), 0.72); // contact point
+const R = new THREE.Vector3();    // release point, measured from the pitcher's hand
+let pQ = 0;
 function pitchPos(p, out) { out.lerpVectors(R, K, p); out.y -= 0.35 * Math.sin(Math.PI * p); return out; }
+
+// ---- pitcher: set → high leg kick (closing) → stride & hand split → hips/shoulders fire → release → follow-through
+const P_BALL  = [[0, [0.05, 0.85, 0.28]], [0.35, [0.05, 0.88, 0.28]], [0.9, [0.0, 1.05, 0.18]], [1.12, [-0.42, 0.55, -0.5]], [1.36, [-0.55, 1.5, -0.38]],
+                 [PITCH_REL, [-0.25, 1.5, 0.72]], [1.82, [0.3, 0.4, 0.62]], [2.4, [0.3, 0.45, 0.5]]];
+const P_GLOVE = [[0, [0.1, 0.84, 0.3]], [0.9, [0.06, 1.05, 0.2]], [1.2, [0.45, 1.15, 0.7]], [1.48, [0.38, 0.95, 0.5]], [PITCH_REL, [0.15, 0.85, 0.15]], [2.4, [0.22, 0.75, 0.25]]];
+const P_LFOOT = [[0, [0.15, 0.06, 0.05]], [0.35, [0.15, 0.06, 0.05]], [0.75, [-0.22, 0.72, 0.05]], [1.0, [-0.18, 0.64, 0.0]], [1.28, [0.22, 0.16, 0.75]], [1.4, [0.22, 0.06, 0.85]]];
+const P_RFOOT = [[0, [-0.15, 0.06, 0.05]], [1.5, [-0.15, 0.06, 0.05]], [1.72, [-0.15, 0.2, -0.15]], [1.95, [-0.2, 0.55, -0.35]], [2.25, [-0.05, 0.06, 0.55]]];
+const P_TURN  = [[0, [0]], [0.4, [0]], [0.9, [-1.25]], [1.3, [-1.1]], [PITCH_REL, [0.38]], [2.0, [0.55]], [2.4, [0.4]]];
+const P_LEAN  = [[0, [0]], [0.9, [-0.1]], [1.3, [-0.22]], [PITCH_REL, [0.45]], [1.85, [0.75]], [2.4, [0.4]]];
+const P_BODY  = [[0, [0, 0, 1]], [0.9, [0.1, 0, 1.08]], [1.35, [-0.14, 0.22, 1]], [PITCH_REL, [-0.18, 0.42, 0.9]], [1.8, [-0.18, 0.5, 1]], [2.4, [-0.06, 0.55, 1]]];
 function setPitcher(t) {
-  const h = pitcher.hands[0].position, keys = [
-    [0, [0.05, 0.78, 0.3]], [0.35, [0, 1.0, 0.15]], [0.7, [-0.38, 1.25, -0.45]], [0.85, [-0.3, 1.35, 0.55]], [1.2, [0.2, 0.55, 0.65]]];
-  let i = 0; while (i < keys.length - 2 && t > keys[i + 1][0]) i++;
-  const [t0, a] = keys[i], [t1, b] = keys[i + 1], u = smooth(clamp01((t - t0) / (t1 - t0)));
-  h.set(a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u);
-  pitcher.torso.rotation.x = t < 0.7 ? -0.25 * smooth(clamp01(t / 0.7)) : -0.25 + 0.6 * smooth(clamp01((t - 0.7) / 0.3));
-  pitcher.feet[0].position.y = 0.05 + 0.35 * Math.sin(Math.PI * clamp01((t - 0.3) / 0.55));
+  pitcher.hands[0].position.set(...track(P_BALL, t));
+  pitcher.hands[1].position.set(...track(P_GLOVE, t));
+  pitcher.feet[1].position.set(...track(P_LFOOT, t));
+  pitcher.feet[0].position.set(...track(P_RFOOT, t));
+  pitcher.torso.rotation.set(track(P_LEAN, t)[0], track(P_TURN, t)[0], 0);
+  const [dy, dz, sy] = track(P_BODY, t);
+  pitcher.g.position.set(0, 0.3 + dy, -18.4 + dz); pitcher.torso.scale.set(1, sy, 1);
+  pitcher.head.rotation.set(0, -pitcher.torso.rotation.y * 0.6, 0);   // keeps looking at the plate
+}
+function measureRelease() {
+  setPitcher(PITCH_REL); pitcher.g.updateMatrixWorld(true); pitcher.hands[0].getWorldPosition(R);
+  pQ = 1 - 1.6 / R.distanceTo(K); setPitcher(0);
 }
 
 // ---------- ball, glow, trail
@@ -579,7 +632,7 @@ let shakeAmp = 0;
 const shake = a => { if (!reduced) shakeAmp = Math.max(shakeAmp, a); };
 
 // ---------- options & state
-const opt = { target: 'board', brk: true, short: false, slow: false };
+const opt = { target: 'board', brk: true, short: false, slow: false, motion: false };
 let introNext = true, cams = {}, batFree = null;
 let T, H, dir, perp, side, tgt, fCur, crossed, impactDone, ballFree, ballVel, ballVisible, cheer, tube, fwTimer, distTimer;
 const camChase = new THREE.Vector3(), lookChase = new THREE.Vector3();
@@ -653,22 +706,22 @@ function introShot() {
 function buildShots() {
   const sh = opt.short;
   const list = [];
-  list.push({ chip: 0, cap: ['1x', '打者背後視角：投手投球，玩家看準時機點螢幕揮棒。'], dur: 1.55,
+  list.push({ chip: 0, cap: ['1x', '打者背後視角：投手抬腿、跨步、出手；打者晃棒、拉棒、抬腳、跨步。'], dur: PITCH_REL + 0.7,
     update(t) {
-      setCam(...C0); setPitcher(t); setSwing(0);
-      batter.feet[1].position.y = 0.05 + 0.12 * Math.sin(Math.PI * clamp01((t - 1.05) / 0.45));
-      if (t < 0.85) pitcher.hands[0].getWorldPosition(ball.position); else { pitchPos(pQ * (t - 0.85) / 0.7, ball.position); $('#pitchInfo').classList.add('show'); }
+      setCam(...C0); setPitcher(t); setStance(t);
+      if (t < PITCH_REL) pitcher.hands[0].getWorldPosition(ball.position); else { pitchPos(pQ * (t - PITCH_REL) / 0.7, ball.position); $('#pitchInfo').classList.add('show'); }
     } });
   list.push({ chip: 1, rate: sh ? 1.5 : 1, cap: ['0.1x', `慢動作揮棒特寫（${SWING_CAMS[cams.swing].label}）：擊中瞬間停格、閃光、畫面震動。`], dur: 1.4, cine: true,
     enter() { hit = false; },
     update(t) {
       const u = clamp01(t / 1.4);
       SWING_CAMS[cams.swing].set(u);
-      if (t < 0.9) { pitchPos(pQ + (1 - pQ) * t / 0.9, ball.position); setSwing(0.4 * clamp01((t - 0.25) / 0.65)); }
+      setPitcher(PITCH_REL + 0.7);
+      if (t < 0.9) { pitchPos(pQ + (1 - pQ) * t / 0.9, ball.position); setSwing(0.4 * easeIn(clamp01((t - 0.2) / 0.7))); }
       else if (t < 1.08) {
         if (!hit) { hit = true; ball.position.copy(K); setSwing(0.4); flash(); shake(0.12); pop('PERFECT!');
           burst(K, { n: 50, speed: 3, size: 0.12, life: 0.45, colors: ['#ffffff', '#ffe08a'], gravity: 0 }); }
-      } else { const v = (t - 1.08) / 0.32; setSwing(0.4 + 0.22 * v); fCur = 0.004 * v; flightPos(fCur, ball.position); ballVisible = 'flight'; }
+      } else { const v = (t - 1.08) / 0.32; setSwing(0.4 + 0.22 * easeOut(v)); fCur = 0.004 * v; flightPos(fCur, ball.position); ballVisible = 'flight'; }
     } });
   const cc = CONTACT_CAMS[cams.contact];
   if (!sh) list.push({ chip: 2, cap: ['0.3x → 1x', {
@@ -677,7 +730,7 @@ function buildShots() {
       pitcher: '投手回頭目送：鏡頭在投手面前，投手轉身看著球從頭上飛過。' }[cams.contact]], dur: cc.dur, cine: true,
     enter() { if (cams.contact === 'trail') $('#speed').classList.add('on'); this.flipped = false; },
     update(t) {
-      setSwing(0.62 + 0.38 * clamp01(t / 0.6));
+      setSwing(0.62 + 0.38 * easeOut(clamp01(t / 0.6)));
       fCur = 0.004 + (cc.fEnd - 0.004) * easeIn(clamp01(t / cc.dur)); flightPos(fCur, ball.position);
       if (cams.contact === 'trail') {
         camera.position.copy(K).addScaledVector(dir, -3.2).addScaledVector(perp, 2.4 * side); camera.position.y = 1.1;
@@ -738,7 +791,7 @@ function buildShots() {
       setCam(...C0); const q = camera.quaternion.clone();
       camera.position.lerpVectors(this.p, new THREE.Vector3(C0[0], C0[1], C0[2]), u);
       camera.quaternion.copy(this.q).slerp(q, u);
-      pitcher.g.rotation.y = 0; batter.head.rotation.x = 0; setPitcher(0); setSwing(0);
+      pitcher.g.rotation.y = 0; setPitcher(0); setStance(0);
     } });
   return list;
 }
@@ -775,7 +828,7 @@ function reset() {
   fCur = 0; crossed = false; impactDone = false; ballFree = false; ballVel = new THREE.Vector3(); ballVisible = 'hand'; cheer = 0; fwTimer = 0; shakeAmp = 0;
   batFree = null; pitcher.g.rotation.y = 0; batter.head.rotation.x = 0;
   $('#pitchInfo').classList.remove('show'); $('#introCard').classList.remove('show');
-  setPitcher(0); setSwing(0); batter.feet[1].position.y = 0.05;
+  setPitcher(0); setStance(0);
 }
 function play() {
   reset();
@@ -812,6 +865,7 @@ $('#diff').addEventListener('click', e => {
   useDiff(b.dataset.k); introNext = true; play();
 });
 $('#optCams').addEventListener('click', play);
+toggle('#optMotion', 'motion', play);
 $('#play').addEventListener('click', play);
 $('#c').addEventListener('pointerdown', skip);
 
@@ -885,7 +939,18 @@ function frame(now) {
     camera.position.x += rnd(-1, 1) * shakeAmp; camera.position.y += rnd(-1, 1) * shakeAmp;
     shakeAmp *= Math.exp(-dt * 9);
   }
-  renderer.render(scene, camera);
+  if (opt.motion && cur >= 0 && shots[cur] && shots[cur].chip === 0) {
+    // 動作特寫: split screen — pitcher in profile on top, batter from the front side below
+    const w = innerWidth, h = innerHeight, ph = $('#panel').offsetHeight, top = 70, area = h - ph - top, hh = Math.round(area / 2);
+    [camTop, camBot].forEach(c => { c.aspect = w / hh; c.updateProjectionMatrix(); });
+    camTop.position.set(-3.4, 1.2, -16.6); camTop.lookAt(0, 0.95, -17.75);
+    camBot.position.set(2.0, 1.05, -1.7); camBot.lookAt(-0.45, 0.9, 0.25);
+    renderer.setScissorTest(true);
+    renderer.setViewport(0, 0, w, h); renderer.setScissor(0, 0, w, h); renderer.setClearColor('#0e1330'); renderer.clear();
+    renderer.setViewport(0, ph + hh, w, area - hh); renderer.setScissor(0, ph + hh, w, area - hh); renderer.render(scene, camTop);
+    renderer.setViewport(0, ph, w, hh - 2); renderer.setScissor(0, ph, w, hh - 2); renderer.render(scene, camBot);
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, w, h);
+  } else renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 useDiff('hell');
