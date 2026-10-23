@@ -59,7 +59,12 @@ export interface HomeRun {
   ball: BattedBall;
   /** Where it ends up: the 設施 it hit (and whether this hit 打碎 it), or the stands. */
   landing: Landing;
+  /** Which 全壘打演出 to play: 'full' when this hit 打碎 a 設施 or flew ≥ TUNING.cinematic.fullDistance, else 'short'. */
+  cinematic: CinematicVersion;
 }
+
+/** 全壘打演出 version: full (~9 s) or short (~5 s). */
+export type CinematicVersion = 'full' | 'short';
 
 export interface Out {
   kind: 'out';
@@ -151,7 +156,9 @@ export function startRound(options: RoundOptions): Round {
     swing(timingErrorMs) {
       takePitch();
       const judged = judgeSwing(timingErrorMs, randomness, random);
-      return record(judged.kind === 'homeRun' ? { ...judged, landing: facilities.land(judged.ball) } : judged);
+      if (judged.kind === 'out') return record(judged);
+      const landing = facilities.land(judged.ball);
+      return record({ ...judged, landing, cinematic: cinematicVersion(judged.ball, landing) });
     },
     noSwing() {
       takePitch();
@@ -174,7 +181,7 @@ function throwPitch(settings: PitchSettings, random: RandomSource): Pitch {
   return { type, speedKmh, releaseMs: windupMs, flightMs, contactMs, swingDeadlineMs, dropM };
 }
 
-function judgeSwing(timingErrorMs: number, randomness: number, random: RandomSource): Out | Omit<HomeRun, 'landing'> {
+function judgeSwing(timingErrorMs: number, randomness: number, random: RandomSource): Out | Omit<HomeRun, 'landing' | 'cinematic'> {
   const timing = grade(timingErrorMs);
   if (Math.abs(timingErrorMs) > TUNING.swing.contactWindowMs) return { kind: 'out', out: 'whiff', timing, ball: null };
   // A Perfect swing is never jittered: it is always the same home run.
@@ -182,6 +189,11 @@ function judgeSwing(timingErrorMs: number, randomness: number, random: RandomSou
   if (Math.abs(ball.angle) > FIELD.foulLineAngle) return { kind: 'out', out: 'foul', timing, ball };
   if (ball.distance < FIELD.fenceDistance) return { kind: 'out', out: 'flyOut', timing, ball };
   return { kind: 'homeRun', timing, ball };
+}
+
+function cinematicVersion(ball: BattedBall, landing: Landing): CinematicVersion {
+  const smashed = landing.kind === 'facility' && landing.smashed;
+  return smashed || ball.distance >= TUNING.cinematic.fullDistance ? 'full' : 'short';
 }
 
 function grade(timingErrorMs: number): TimingGrade {

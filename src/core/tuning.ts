@@ -52,6 +52,10 @@ export const TUNING = {
     /** …and the direction angle by up to ± this many degrees. Both scale linearly with 隨機幅度. */
     maxAngleSpreadDeg: 10,
   },
+  cinematic: {
+    /** A 全壘打 this long (m) or longer plays the full 全壘打演出, as does any 打碎. */
+    fullDistance: 140,
+  },
   smash: {
     /** Chance that hitting a 設施 打碎 it, at the near and far 飛距離 (m); linear between, clamped outside. */
     near: { distance: 120, chance: 0.2 },
