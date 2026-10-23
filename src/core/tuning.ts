@@ -12,8 +12,17 @@ export const TUNING = {
     windupMs: 1400,
     /** Release point to the contact point at the plate, metres. */
     flightDistance: 17.4,
-    /** 中速 fastball speed range (km/h); each pitch picks a speed in it. */
-    fastballKmh: { min: 112, max: 118 },
+    /**
+     * Speed range (km/h) of each 球種 at each 球速 level; each pitch picks a speed
+     * inside its range. 變速球 and 曲球 are slower than 直球 at the same level.
+     */
+    speedKmh: {
+      fastball: { slow: { min: 96, max: 102 }, medium: { min: 112, max: 118 }, fast: { min: 130, max: 136 } },
+      changeup: { slow: { min: 80, max: 86 }, medium: { min: 92, max: 98 }, fast: { min: 106, max: 112 } },
+      curveball: { slow: { min: 78, max: 84 }, medium: { min: 90, max: 96 }, fast: { min: 102, max: 108 } },
+    },
+    /** How far (m) a 曲球 drops below a straight line over its flight. */
+    curveDropM: 0.9,
   },
   swing: {
     /** |timing error| ≤ this (ms) is Perfect and always a home run. */

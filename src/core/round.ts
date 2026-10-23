@@ -29,6 +29,8 @@ export interface Pitch {
   contactMs: number;
   /** After this the pitch has gone by: no swing can count, so report noSwing(). */
   swingDeadlineMs: number;
+  /** How far (m) the ball breaks downward in flight: > 0 for a 曲球, 0 for the others. */
+  dropM: number;
 }
 
 /** 時機評價: Perfect／太早／太晚. */
@@ -130,12 +132,7 @@ export function startRound(options: RoundOptions): Round {
     },
     nextPitch() {
       if (isOver()) throw new Error('The round is over');
-      const { windupMs, flightDistance, fastballKmh } = TUNING.pitch;
-      const speedKmh = fastballKmh.min + (fastballKmh.max - fastballKmh.min) * random();
-      const flightMs = (flightDistance / (speedKmh / 3.6)) * 1000;
-      const contactMs = windupMs + flightMs;
-      const swingDeadlineMs = contactMs + TUNING.swing.contactWindowMs + TUNING.swing.deadlineGraceMs;
-      current = { type: 'fastball', speedKmh, releaseMs: windupMs, flightMs, contactMs, swingDeadlineMs };
+      current = throwPitch(pitchSettings, random);
       return current;
     },
     swing(timingErrorMs) {
@@ -147,6 +144,20 @@ export function startRound(options: RoundOptions): Round {
       return record({ kind: 'out', out: 'noSwing', timing: null, ball: null });
     },
   };
+}
+
+/** Picks one of the checked 球種 and a speed inside its range. Every 球種 has the same windup. */
+function throwPitch(settings: PitchSettings, random: RandomSource): Pitch {
+  const { windupMs, flightDistance, speedKmh: ranges, curveDropM } = TUNING.pitch;
+  const { types } = settings;
+  const type = types[Math.min(types.length - 1, Math.floor(random() * types.length))];
+  const range = ranges[type][settings.speed];
+  const speedKmh = range.min + (range.max - range.min) * random();
+  const flightMs = (flightDistance / (speedKmh / 3.6)) * 1000;
+  const contactMs = windupMs + flightMs;
+  const swingDeadlineMs = contactMs + TUNING.swing.contactWindowMs + TUNING.swing.deadlineGraceMs;
+  const dropM = type === 'curveball' ? curveDropM : 0;
+  return { type, speedKmh, releaseMs: windupMs, flightMs, contactMs, swingDeadlineMs, dropM };
 }
 
 function judgeSwing(timingErrorMs: number): PitchResult {
