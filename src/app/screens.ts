@@ -1,4 +1,5 @@
 import type { BestScore, RoundState } from '../core';
+import { keepTapsFromSwing } from './dom';
 import { describePitchSettings } from './pitchSettingsScreen';
 
 /**
@@ -54,8 +55,8 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
   const settings = root.querySelector<HTMLElement>('.screen-settings')!;
   const field = (name: string) => root.querySelector<HTMLElement>(`[data-${name}]`)!;
 
-  // Buttons act on click; their pointerdown must not reach the swing handler.
-  root.addEventListener('pointerdown', (e) => e.stopPropagation());
+  // Buttons act on click.
+  keepTapsFromSwing(root);
   root.addEventListener('click', (e) => {
     const action = (e.target as HTMLElement).closest<HTMLElement>('[data-action]')?.dataset.action;
     if (action === 'start' || action === 'again') actions.start();

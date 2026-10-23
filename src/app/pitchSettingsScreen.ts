@@ -1,5 +1,6 @@
 import { PITCH_TYPES, SPEED_LEVELS, difficultyMultiplier, homeRunPoints, togglePitchType, type PitchSettings, type PitchType, type SpeedLevel } from '../core';
 import { formatMultiplier } from '../render/hud';
+import { keepTapsFromSwing } from './dom';
 import type { PitchSettingsStorage } from './pitchSettingsStorage';
 import './pitchSettingsScreen.css';
 
@@ -76,8 +77,7 @@ export function createPitchSettingsScreen(host: HTMLElement, storage: PitchSetti
     render();
   };
 
-  // Its buttons must not reach the swing handler on window.
-  root.addEventListener('pointerdown', (e) => e.stopPropagation());
+  keepTapsFromSwing(root);
   root.addEventListener('change', (e) => {
     const input = e.target as HTMLInputElement;
     if (input.name === 'type') update(togglePitchType(settings, input.value as PitchType));
