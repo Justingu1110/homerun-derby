@@ -46,14 +46,20 @@ interface Shot {
 /**
  * Shot lengths (shot time, s) and playback rates. Tune feel here.
  * full: every shot at 1×. short: a faster 揮棒特寫, no 擊球特寫, a quicker chase / impact / 飛距離.
+ * From contact to the start of the return shot, across 120–165 m, this gives
+ * about 5 s for the short version and about 9 s for the full one (spec).
  */
 const SHOTS = {
-  swing: { dur: 1.4, rate: { full: 1, short: 1.5 } },
-  contact: { dur: 1.0, rate: { full: 1, short: 0 } }, // rate 0 = left out
-  /** Chase length = base + (飛距離 − 128 m) / perMetre. */
-  chase: { base: { full: 1.6, short: 1.2 }, perMetre: 40, rate: { full: 1, short: 1 } },
-  impact: { dur: 2.0, rate: { full: 1, short: 1.3 } },
-  distance: { dur: 2.6, rate: { full: 1, short: 1.6 } },
+  swing: { dur: 1.4, rate: { full: 1, short: 1.6 } },
+  /** 擊球特寫: left out of the short version. */
+  contact: { dur: 1.0, rate: 1, inShort: false },
+  /**
+   * Chase length = base + (飛距離 − fromM) / perMetre: the shortest 全壘打 (just over the
+   * wall) gets the base, and a longer one a little more, without moving the total much.
+   */
+  chase: { base: { full: 1.8, short: 1.1 }, fromM: FIELD.fenceDistance, perMetre: 100, rate: { full: 1, short: 1 } },
+  impact: { dur: 2.0, rate: { full: 1, short: 1.4 } },
+  distance: { dur: 2.6, rate: { full: 1, short: 1.75 } },
   return: { dur: 1.3, rate: { full: 1, short: 1.3 } },
 } as const;
 
@@ -444,8 +450,8 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
       const dist = result.ball.distance;
       const shots: Shot[] = [
         { id: 'swing', dur: SHOTS.swing.dur, rate: SHOTS.swing.rate[version] },
-        ...(version === 'full' ? [{ id: 'contact' as const, dur: SHOTS.contact.dur, rate: SHOTS.contact.rate.full }] : []),
-        { id: 'chase', dur: SHOTS.chase.base[version] + (dist - 128) / SHOTS.chase.perMetre, rate: SHOTS.chase.rate[version] },
+        ...(version === 'full' || SHOTS.contact.inShort ? [{ id: 'contact' as const, dur: SHOTS.contact.dur, rate: SHOTS.contact.rate }] : []),
+        { id: 'chase', dur: SHOTS.chase.base[version] + (dist - SHOTS.chase.fromM) / SHOTS.chase.perMetre, rate: SHOTS.chase.rate[version] },
         { id: 'impact', dur: SHOTS.impact.dur, rate: SHOTS.impact.rate[version] },
         { id: 'distance', dur: SHOTS.distance.dur, rate: SHOTS.distance.rate[version] },
         { id: 'return', dur: SHOTS.return.dur, rate: SHOTS.return.rate[version] },
