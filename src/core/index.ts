@@ -6,3 +6,5 @@ export { readBestScore } from './bestScore';
 export type { BestScore, BestScoreStorage } from './bestScore';
 export { startRound } from './round';
 export type { BattedBall, HomeRun, Out, OutKind, Pitch, PitchResult, PitchType, RandomSource, Round, RoundOptions, RoundState, TimingGrade } from './round';
+export { DEFAULT_APPEARANCE, makeAppearance } from './appearance';
+export type { Appearance } from './appearance';
