@@ -1,4 +1,4 @@
-import type { BestScore, BestScoreStorage } from '../core';
+import { parsePitchSettings, type BestScore, type BestScoreStorage } from '../core';
 
 const BEST_SCORE_KEY = 'homerun-derby:best-score';
 
@@ -29,8 +29,8 @@ export function localBestScoreStorage(key = BEST_SCORE_KEY): BestScoreStorage {
 
 function parseBestScore(v: unknown): BestScore | null {
   if (typeof v !== 'object' || v === null) return null;
-  const { score, totalDistance } = v as Record<string, unknown>;
-  return typeof score === 'number' && Number.isFinite(score) && typeof totalDistance === 'number' && Number.isFinite(totalDistance)
-    ? { score, totalDistance }
-    : null;
+  const { score, totalDistance, pitchSettings } = v as Record<string, unknown>;
+  if (!(typeof score === 'number' && Number.isFinite(score) && typeof totalDistance === 'number' && Number.isFinite(totalDistance))) return null;
+  const settings = parsePitchSettings(pitchSettings);
+  return settings ? { score, totalDistance, pitchSettings: settings } : { score, totalDistance };
 }

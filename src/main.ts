@@ -1,5 +1,7 @@
 import './style.css';
 import { readBestScore, startRound } from './core';
+import { createPitchSettingsScreen } from './app/pitchSettingsScreen';
+import { localPitchSettingsStorage } from './app/pitchSettingsStorage';
 import { createScreens } from './app/screens';
 import { localBestScoreStorage } from './app/storage';
 import { createAtBat } from './render/atBat';
@@ -17,20 +19,29 @@ buildStadium(view.scene);
 const hud = createHud(hudRoot);
 const atBat = createAtBat(view.scene, view.camera, hud);
 const storage = localBestScoreStorage();
+const pitchSettingsStorage = localPitchSettingsStorage();
 
-// Screen flow: 標題 → 一局 → 結算 → (再玩一次 → 一局) | (回標題 → 標題).
+// Screen flow: 標題 → 一局 → 結算 → (再玩一次 → 一局) | (回標題 → 標題); 標題 ⇄ 投球設定.
 const showTitle = () => {
   hud.showRound(null);
   screens.showTitle(readBestScore(storage));
 };
 const play = () => {
   screens.hide();
-  atBat.play(startRound({ random: Math.random, storage }), performance.now(), (state) => {
+  atBat.play(startRound({ random: Math.random, storage, pitchSettings: pitchSettingsStorage.load() }), performance.now(), (state) => {
     hud.showRound(null);
     screens.showResult(state);
   });
 };
-const screens = createScreens(screensRoot, { start: play, backToTitle: showTitle });
+const pitchSettingsScreen = createPitchSettingsScreen(document.body, pitchSettingsStorage, () => {
+  pitchSettingsScreen.hide();
+  showTitle();
+});
+const openPitchSettings = () => {
+  screens.hide();
+  pitchSettingsScreen.show();
+};
+const screens = createScreens(screensRoot, { start: play, backToTitle: showTitle, pitchSettings: openPitchSettings });
 showTitle();
 
 // Swing on any tap. event.timeStamp is a high-resolution time on the same clock

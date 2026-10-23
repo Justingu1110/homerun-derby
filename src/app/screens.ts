@@ -1,4 +1,5 @@
 import type { BestScore, RoundState } from '../core';
+import { describePitchSettings } from './pitchSettingsScreen';
 
 /**
  * The menu screens around 一局 (標題, 結算), as DOM overlays above the stadium.
@@ -13,6 +14,7 @@ export interface Screens {
 export interface ScreenActions {
   start(): void;
   backToTitle(): void;
+  pitchSettings(): void;
 }
 
 const metres = (m: number) => `${Math.round(m)} m`;
@@ -21,10 +23,10 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
   root.innerHTML = `
     <section class="screen screen-title" hidden>
       <h1 class="title-logo">全壘打<br />大賽</h1>
-      <div class="title-best"><span class="label">最高分</span><span class="value" data-best></span></div>
+      <div class="title-best"><span class="label">最高分</span><span class="value" data-best></span><span class="title-best-note" data-best-note></span></div>
       <div class="screen-buttons">
         <button type="button" class="btn btn-primary" data-action="start">開始</button>
-        <button type="button" class="btn" disabled title="即將推出">投球設定</button>
+        <button type="button" class="btn" data-action="pitch-settings">投球設定</button>
         <button type="button" class="btn" disabled title="即將推出">設定</button>
       </div>
     </section>
@@ -52,6 +54,7 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
     const action = (e.target as HTMLElement).closest<HTMLElement>('[data-action]')?.dataset.action;
     if (action === 'start' || action === 'again') actions.start();
     else if (action === 'title') actions.backToTitle();
+    else if (action === 'pitch-settings') actions.pitchSettings();
   });
 
   const show = (screen: HTMLElement | null) => {
@@ -66,6 +69,7 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
       const bestEl = field('best');
       bestEl.textContent = best ? String(best.score) : '還沒有紀錄';
       bestEl.classList.toggle('is-empty', !best);
+      field('best-note').textContent = best?.pitchSettings ? describePitchSettings(best.pitchSettings) : '';
       show(title);
     },
     showResult(state) {
