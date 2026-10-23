@@ -1,29 +1,17 @@
 import { parsePitchSettings, type BestScore, type BestScoreStorage } from '../core';
+import { localJsonStore } from './jsonStore';
 
 const BEST_SCORE_KEY = 'homerun-derby:best-score';
 
 /**
- * 最高分 in localStorage. Never throws: when storage is blocked (private
- * browsing, disabled cookies, quota) it reads as "no record" and writes are
- * dropped, so the game plays on.
+ * 最高分 in localStorage. Never throws: when storage is blocked it reads as
+ * "no 最高分 yet" and writes are dropped, so the game plays on.
  */
 export function localBestScoreStorage(key = BEST_SCORE_KEY): BestScoreStorage {
+  const store = localJsonStore(key);
   return {
-    load() {
-      try {
-        const raw = window.localStorage.getItem(key);
-        return raw === null ? null : parseBestScore(JSON.parse(raw));
-      } catch {
-        return null;
-      }
-    },
-    save(best) {
-      try {
-        window.localStorage.setItem(key, JSON.stringify(best));
-      } catch {
-        // Storage unavailable: the record lasts only this session.
-      }
-    },
+    load: () => parseBestScore(store.read()),
+    save: (best) => store.write(best),
   };
 }
 

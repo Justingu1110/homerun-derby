@@ -1,4 +1,5 @@
 import { TUNING } from '../core';
+import { localJsonStore } from './jsonStore';
 
 /** 設定: kept on this device. Separate from the 投球設定 (their own key and screen). */
 export interface Settings {
@@ -31,28 +32,17 @@ const SETTINGS_KEY = 'homerun-derby:settings';
  * that field's default.
  */
 export function localSettings(key = SETTINGS_KEY): SettingsStore {
-  let current = load(key);
+  const store = localJsonStore(key);
+  const stored = store.read();
+  let current = stored === undefined ? DEFAULT_SETTINGS : parseSettings(stored);
   return {
     get: () => current,
     set(patch) {
       current = parseSettings({ ...current, ...patch });
-      try {
-        window.localStorage.setItem(key, JSON.stringify(current));
-      } catch {
-        // Storage unavailable: the 設定 last only this session.
-      }
+      store.write(current);
       return current;
     },
   };
-}
-
-function load(key: string): Settings {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw === null ? DEFAULT_SETTINGS : parseSettings(JSON.parse(raw));
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
 }
 
 function parseSettings(v: unknown): Settings {

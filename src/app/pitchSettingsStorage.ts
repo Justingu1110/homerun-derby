@@ -1,4 +1,5 @@
 import { DEFAULT_PITCH_SETTINGS, parsePitchSettings, type PitchSettings } from '../core';
+import { localJsonStore } from './jsonStore';
 
 const PITCH_SETTINGS_KEY = 'homerun-derby:pitch-settings';
 
@@ -12,21 +13,9 @@ export interface PitchSettingsStorage {
  * something invalid it reads as the default (直球, 中速), and writes are dropped.
  */
 export function localPitchSettingsStorage(key = PITCH_SETTINGS_KEY): PitchSettingsStorage {
+  const store = localJsonStore(key);
   return {
-    load() {
-      try {
-        const raw = window.localStorage.getItem(key);
-        return (raw !== null && parsePitchSettings(JSON.parse(raw))) || DEFAULT_PITCH_SETTINGS;
-      } catch {
-        return DEFAULT_PITCH_SETTINGS;
-      }
-    },
-    save(settings) {
-      try {
-        window.localStorage.setItem(key, JSON.stringify(settings));
-      } catch {
-        // Storage unavailable: the settings last only this session.
-      }
-    },
+    load: () => parsePitchSettings(store.read()) ?? DEFAULT_PITCH_SETTINGS,
+    save: (settings) => store.write(settings),
   };
 }
