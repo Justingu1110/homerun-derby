@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { difficultyMultiplier, startRound, type Pitch, type PitchSettings, type PitchType } from './index';
+import { TUNING, difficultyMultiplier, startRound, type Pitch, type PitchSettings, type PitchType } from './index';
 
 const fixed = (v: number) => () => v;
 
@@ -74,6 +74,60 @@ describe('球種: each pitch is one of the checked 球種', () => {
     for (const type of ['fastball', 'changeup', 'curveball'] as const) {
       const share = pitches.filter((p) => p.type === type).length / pitches.length;
       expect(share).toBeGreaterThan(0.2);
+    }
+  });
+});
+
+describe('球速: each 球種 stays inside a small range for the chosen level', () => {
+  const speeds = (type: PitchType, speed: PitchSettings['speed']) => throwPitches({ types: [type], speed }, 200).map((p) => p.speedKmh);
+
+  it.each<{ type: PitchType; speed: PitchSettings['speed'] }>(
+    (['fastball', 'changeup', 'curveball'] as const).flatMap((type) => (['slow', 'medium', 'fast'] as const).map((speed) => ({ type, speed }))),
+  )('$type at $speed is inside TUNING.pitch.speedKmh and varies by at most 6 km/h', ({ type, speed }) => {
+    const all = speeds(type, speed);
+    const { min, max } = TUNING.pitch.speedKmh[type][speed];
+    for (const v of all) {
+      expect(v).toBeGreaterThanOrEqual(min);
+      expect(v).toBeLessThanOrEqual(max);
+    }
+    expect(Math.max(...all) - Math.min(...all)).toBeGreaterThan(0);
+    expect(max - min).toBeLessThanOrEqual(6);
+  });
+
+  it('slow < medium < fast for every 球種', () => {
+    for (const type of ['fastball', 'changeup', 'curveball'] as const) {
+      expect(Math.max(...speeds(type, 'slow'))).toBeLessThan(Math.min(...speeds(type, 'medium')));
+      expect(Math.max(...speeds(type, 'medium'))).toBeLessThan(Math.min(...speeds(type, 'fast')));
+    }
+  });
+});
+
+describe('球種 behave differently in flight', () => {
+  const one = (type: PitchType) => throwPitches({ types: [type], speed: 'medium' }, 1, fixed(0.5))[0];
+
+  it('a 變速球 has the same windup as a 直球 but reaches the plate later', () => {
+    const fastball = one('fastball');
+    const changeup = one('changeup');
+    expect(changeup.releaseMs).toBe(fastball.releaseMs);
+    expect(changeup.speedKmh).toBeLessThan(fastball.speedKmh);
+    expect(changeup.flightMs).toBeGreaterThan(fastball.flightMs);
+    expect(changeup.contactMs).toBeGreaterThan(fastball.contactMs);
+  });
+
+  it('a 曲球 is slower than a 直球 and drops in flight; the others fly straight', () => {
+    const fastball = one('fastball');
+    const curveball = one('curveball');
+    expect(curveball.flightMs).toBeGreaterThan(fastball.flightMs);
+    expect(curveball.dropM).toBeGreaterThan(0);
+    expect(fastball.dropM).toBe(0);
+    expect(one('changeup').dropM).toBe(0);
+  });
+
+  it('timing is judged against each pitch’s own contact moment', () => {
+    for (const type of ['fastball', 'changeup', 'curveball'] as const) {
+      const round = startRound({ random: fixed(0.5), pitchSettings: { types: [type], speed: 'fast' } });
+      round.nextPitch();
+      expect(round.swing(0)).toMatchObject({ kind: 'homeRun', timing: 'perfect' });
     }
   });
 });
