@@ -20,6 +20,7 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { crowdLevel, layoutCrowd, type CrowdChunk } from './crowdLayout';
+import { outsideShadows } from './lighting';
 
 /**
  * Chibi fans (body, head, eyes, cap or hair, two hands, sometimes a towel).
@@ -230,6 +231,8 @@ export function buildCrowd(): Group {
     group.add(new CrowdWedge(chunk, near, far));
   }
   group.userData.uniforms = uniforms;
+  // The stands are far outside the players' shadow area: they neither cast nor receive.
+  outsideShadows(group);
   return group;
 }
 
