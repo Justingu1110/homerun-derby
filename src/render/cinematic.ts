@@ -84,15 +84,17 @@ const BEAT = {
   flipS: 0.3,
   flipLookUp: 0.3,
   /**
-   * 投手回頭目送: the pitcher turns from turnS (s into the shot) for turnForS. The camera (turnCam)
-   * looks at him and, as the ball gets panOverM past the camera, panTo of the way to the ball.
+   * 投手回頭目送: the pitcher turns from turnS (s into the shot) for turnForS. The camera starts
+   * close in front of him (turnCam: x, y, m in front of the mound) and pulls back low (turnCamBack) so
+   * he and the ball over him fit; as the ball gets panOverM past it, it tilts halfway up to the ball (at most panMaxDeg).
    */
   turnS: 0.1,
   turnForS: 0.7,
-  turnCam: [0.9, 1.1, MOUND.z + 4.2],
+  turnCam: [0.9, 1.1, 4.2],
+  turnCamBack: [1.2, 0.5, 12],
   turnLookY: 1.5,
-  panTo: 0.75,
-  panOverM: 7,
+  panMaxDeg: 24,
+  panOverM: 8,
   /** Impact shot: the ball reaches its landing this far in. */
   impactS: 0.4,
   /** Speed lines stay on this long into the chase. */
@@ -445,12 +447,22 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}, r
           setCam(2.1, 1.2, -1.0, -0.6, 1.1, 0.25);
           if (thrown) batter.lookUp(BEAT.flipLookUp * smooth(clamp01((t - BEAT.flipS) / 0.3)));
         } else if (p.cams.contact === 'pitcher') {
-          // 投手回頭目送: low in front of the pitcher, who turns; once the ball has flown over
-          // the camera, the camera tilts up after it going over his head.
-          camera.position.set(...BEAT.turnCam);
-          const ahead = camera.position.z - tmp.z;
-          look.set(0, BEAT.turnLookY, MOUND.z).lerp(tmp, BEAT.panTo * smooth(clamp01(ahead / BEAT.panOverM)));
-          camera.lookAt(look);
+          // 投手回頭目送: close in front of the pitcher, who turns; the camera pulls back low and
+          // centres between him and where the ball crosses his depth (a pulled hit goes by to the side),
+          // and once the ball has flown over the camera it tilts up after it.
+          const wide = (dir.x / -dir.z) * -MOUND.z;
+          const [x0, y0, z0] = BEAT.turnCam;
+          const [x1, y1, back] = BEAT.turnCamBack;
+          const z1 = Math.max(back, Math.abs(wide) * 1.2 + 4);
+          const k = smooth(clamp01(t / s.dur));
+          camera.position.set(x0 + (x1 + wide / 2 - x0) * k, y0 + (y1 - y0) * k, MOUND.z + z0 + (z1 - z0) * k);
+          // Tilt up toward the ball, at most so far that the pitcher stays at the bottom of the frame.
+          const run = camera.position.z - MOUND.z;
+          const atPitcher = Math.atan2(BEAT.turnLookY - camera.position.y, run);
+          const atBall = Math.atan2(tmp.y - camera.position.y, Math.max(1, camera.position.z - tmp.z));
+          const tilt = smooth(clamp01((camera.position.z - tmp.z) / BEAT.panOverM));
+          const elev = atPitcher + tilt * Math.max(0, Math.min((atBall - atPitcher) / 2, BEAT.panMaxDeg * DEG));
+          camera.lookAt(look.set((wide / 2) * k, camera.position.y + run * Math.tan(elev), MOUND.z));
         } else {
           camera.position.copy(CONTACT_POINT).addScaledVector(dir, -3.2).addScaledVector(perp, 2.4 * side);
           camera.position.y = 1.1;
