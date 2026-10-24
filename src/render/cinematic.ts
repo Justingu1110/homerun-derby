@@ -108,6 +108,9 @@ const FX = {
   afterStands: [5, 6],
   afterSmash: [22, 2],
   afterHit: [-9, 4],
+  /** Impact shot camera: back from the landing (m), across, up, and how far below the landing it looks. */
+  impactCam: [24, 16, 4, 1],
+  impactCamStands: [11, 6, 2.5, 0.2],
   tubeRadius: 0.45,
   tubeColor: '#ffc83d',
 } as const;
@@ -311,12 +314,15 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
         camera.lookAt(look);
         break;
       }
-      case 'impact':
+      case 'impact': {
         batter.setSwing(1);
-        camera.position.copy(to).addScaledVector(dir, -24).addScaledVector(perp, 16 * side);
-        camera.position.y = to.y + 4;
-        camera.lookAt(to.x, to.y - 1, to.z);
+        // Into the stands: close enough to see the fans cheer. Elsewhere: wide on the 設施.
+        const [back, across, up, below] = p.result.landing.kind === 'stands' ? FX.impactCamStands : FX.impactCam;
+        camera.position.copy(to).addScaledVector(dir, -back).addScaledVector(perp, across * side);
+        camera.position.y = to.y + up;
+        camera.lookAt(to.x, to.y - below, to.z);
         break;
+      }
       case 'distance': {
         batter.setSwing(1);
         distancePose(p, smooth(clamp01(t / s.dur)));
