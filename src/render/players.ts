@@ -108,6 +108,8 @@ export interface Pitcher {
   hand: Object3D;
   /** Where this pitcher's ball hand is at PITCH_RELEASE (world): the pitch starts here. */
   releasePoint: Readonly<Vector3>;
+  /** The whole figure (hands included), e.g. to hide it. setTurn owns root.rotation.y. */
+  root: Object3D;
 }
 
 /** Pitcher on the mound, facing the plate (+z). A left-hander (look.lefty) is the right-hander's motion mirrored. */
@@ -124,5 +126,5 @@ export function createPitcher(scene: Scene, look: Appearance = PITCHER_LOOK): Pi
     const ccw = ((heading % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
     f.root.rotation.y = u * (look.lefty ? ccw - 2 * Math.PI : ccw);
   };
-  return { setWindup, setTurn, hand: f.hands[0], releasePoint: releasePoint(look) };
+  return { setWindup, setTurn, hand: f.hands[0], releasePoint: releasePoint(look), root: f.root };
 }
