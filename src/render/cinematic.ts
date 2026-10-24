@@ -14,7 +14,8 @@ import type { CinematicOverlay } from './cinematicOverlay';
 import { seededRandom } from './coords';
 import { FACILITY_POP, type FacilityView } from './facilities';
 import { TIMING_LABEL } from './hud';
-import { CONTACT_POINT, RELEASE_POINT, type Batter, type Pitcher } from './players';
+import { CONTACT_POINT, type Batter, type Pitcher } from './players';
+import { PITCH_END, STANCE_END } from './poses';
 import { BATTER_VIEW, setLens } from './view';
 
 /**
@@ -206,7 +207,7 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
   const rand = seededRandom(4242);
   const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
   const reduced = () => !!reducedMotion?.matches;
-  const approachP = 1 - BEAT.approachM / RELEASE_POINT.distanceTo(CONTACT_POINT);
+  const approachP = () => 1 - BEAT.approachM / pitcher.releasePoint.distanceTo(CONTACT_POINT);
   const tmp = new Vector3();
   const tmp2 = new Vector3();
   const look = new Vector3();
@@ -244,7 +245,8 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
     switch (s.id) {
       case 'swing':
         if (t < BEAT.contactS) {
-          p.approach(approachP + ((1 - approachP) * t) / BEAT.contactS, out);
+          const p0 = approachP();
+          p.approach(p0 + ((1 - p0) * t) / BEAT.contactS, out);
           return 'approach';
         }
         if (t < BEAT.releaseS) {
@@ -278,8 +280,8 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
     const { dir, perp, side, to } = p;
     // Wide lens for the show, narrowing back to the batter view's on the way home.
     setLens(camera, s.id === 'return' ? smooth(clamp01(t / s.dur)) : 0);
-    pitcher.setWindup(s.id === 'return' ? 0 : 1.2);
-    batter.setStride(s.id === 'return' ? 0 : 1);
+    pitcher.setWindup(s.id === 'return' ? 0 : PITCH_END);
+    batter.setStance(s.id === 'return' ? 0 : STANCE_END);
     switch (s.id) {
       case 'swing': {
         const u = clamp01(t / s.dur);

@@ -5,7 +5,8 @@ import type { CinematicOverlay } from './cinematicOverlay';
 import { toWorld } from './coords';
 import { createFacilityView } from './facilities';
 import type { Hud } from './hud';
-import { CONTACT_POINT, RELEASE_POINT, createBatter, createPitcher } from './players';
+import { CONTACT_POINT, createBatter, createPitcher } from './players';
+import { SWING_TO_CONTACT_MS, stanceTime, swingProgress, windupTime } from './poses';
 
 /**
  * Plays 一局: one pitch after another (windup, pitch, swing, result) until the
@@ -23,12 +24,6 @@ const SHOW = {
   firstPitchDelayMs: 800,
   /** Out: time from result to the next pitch (spec: within ~1.5 s). The camera stays put. */
   outPauseMs: 1500,
-  /** Bat reaches the plate this long after the tap, then follows through. */
-  swingToContactMs: 70,
-  swingFollowMs: 260,
-  /** Batter's stride: front foot lifts this long before contact and is planted this long before it. */
-  strideLiftBeforeContactMs: 520,
-  strideLandBeforeContactMs: 90,
   /** Batted-ball hang time = base + distance / perMetre (seconds)… */
   hangBaseS: 0.9,
   hangPerMetre: 60,
@@ -44,11 +39,6 @@ const SHOW = {
   /** A missed ball is hidden once it's this far behind the plate (catcher). */
   catcherZ: 1.4,
 } as const;
-
-/** Windup pose parameter at release / end of follow-through (see Pitcher.setWindup). */
-const WINDUP_RELEASE = 0.85;
-const WINDUP_END = 1.2;
-const FOLLOW_THROUGH_MS = 350;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -115,7 +105,8 @@ export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, o
     },
   );
   let lastNowMs = -Infinity;
-  const pitchDir = new Vector3().subVectors(CONTACT_POINT, RELEASE_POINT);
+  // The pitch leaves this pitcher's ball hand; the core's clock says when it gets to the plate.
+  const pitchDir = new Vector3().subVectors(CONTACT_POINT, pitcher.releasePoint);
   let phase: Phase = { name: 'idle' };
   let round: Round | null = null;
   let onRoundOver: ((state: RoundState) => void) | null = null;
@@ -127,7 +118,7 @@ export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, o
    * into the contact point, and keeps falling past it.
    */
   const pitchPos = (pitch: Pitch, p: number, out: Vector3) => {
-    out.copy(RELEASE_POINT).addScaledVector(pitchDir, p);
+    out.copy(pitcher.releasePoint).addScaledVector(pitchDir, p);
     if (p <= 1) out.y -= SHOW.pitchSag * Math.sin(Math.PI * p);
     out.y += pitch.dropM * curveBreak(p);
     return out;
@@ -162,16 +153,16 @@ export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, o
     hud.showResult(result);
     hud.showRound(round!.state());
     if (result.ball) {
+      // The ball waits where the tap caught it until the bat gets there (a short hit-stop), then flies.
       const from = pitchPos(p.pitch, Math.max(0, (atMs - p.startMs - p.pitch.releaseMs) / p.pitch.flightMs), new Vector3());
-      p.flight = launch(result.ball, from, atMs);
+      p.flight = launch(result.ball, from, atMs + SWING_TO_CONTACT_MS);
     }
     p.nextAtMs = atMs + SHOW.outPauseMs;
   };
 
   const startPitch = (atMs: number) => {
     hud.clear();
-    batter.setSwing(0);
-    batter.setStride(0);
+    batter.setStance(0);
     facilities.sync(round!.state().smashed);
     phase = { name: 'pitch', pitch: round!.nextPitch(), startMs: atMs, swingAtMs: null, result: null, flight: null, nextAtMs: Infinity };
   };
@@ -202,8 +193,7 @@ export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, o
     play(r, nowMs, onOver) {
       round = r;
       onRoundOver = onOver;
-      batter.setSwing(0);
-      batter.setStride(0);
+      batter.setStance(0);
       hud.clear();
       hud.hint(!swungOnce);
       hud.showRound(r.state());
@@ -254,22 +244,10 @@ export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, o
       const elapsed = now - p.startMs;
       const { releaseMs, flightMs } = p.pitch;
 
-      // Pitcher: windup until release, then follow-through.
-      pitcher.setWindup(
-        elapsed < releaseMs
-          ? WINDUP_RELEASE * (elapsed / releaseMs)
-          : WINDUP_RELEASE + (WINDUP_END - WINDUP_RELEASE) * clamp01((elapsed - releaseMs) / FOLLOW_THROUGH_MS),
-      );
-
-      // Batter: stride timed to the pitch, swing timed to the tap.
-      batter.setStride(
-        (elapsed - (p.pitch.contactMs - SHOW.strideLiftBeforeContactMs)) /
-          (SHOW.strideLiftBeforeContactMs - SHOW.strideLandBeforeContactMs),
-      );
-      if (p.swingAtMs !== null) {
-        const s = now - p.swingAtMs;
-        batter.setSwing(s < SHOW.swingToContactMs ? 0.4 * (s / SHOW.swingToContactMs) : 0.4 + 0.6 * clamp01((s - SHOW.swingToContactMs) / SHOW.swingFollowMs));
-      }
+      // Pitcher and batter motion straight from the pitch clock: release and contact are the core's.
+      pitcher.setWindup(windupTime(elapsed, p.pitch));
+      batter.setStance(stanceTime(elapsed, p.pitch));
+      if (p.swingAtMs !== null) batter.setSwing(swingProgress(now - p.swingAtMs));
 
       // Undecided pitch: the core says when it has gone by (沒揮棒). Shown from the deadline, not the frame time.
       if (!p.result) {
@@ -283,8 +261,9 @@ export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, o
       // Ball.
       ball.visible = true;
       const f = p.flight;
-      if (f && now >= f.startMs) {
-        flightPos(f, now, ball.position);
+      if (f) {
+        if (now >= f.startMs) flightPos(f, now, ball.position);
+        else ball.position.copy(f.from);
       } else if (elapsed < releaseMs) pitcher.hand.getWorldPosition(ball.position);
       else {
         pitchPos(p.pitch, (elapsed - releaseMs) / flightMs, ball.position);
