@@ -1,4 +1,4 @@
-import { Mesh, MeshPhongMaterial, SphereGeometry, Vector3, type Camera, type Scene } from 'three';
+import { Mesh, MeshPhongMaterial, SphereGeometry, Vector3, type PerspectiveCamera, type Scene } from 'three';
 import type { BattedBall, HomeRun, Pitch, PitchResult, Round, RoundState } from '../core';
 import { createCinematic } from './cinematic';
 import type { CinematicOverlay } from './cinematicOverlay';
@@ -97,7 +97,7 @@ export interface AtBatEvents {
   impact?(result: HomeRun): void;
 }
 
-export function createAtBat(scene: Scene, camera: Camera, hud: Hud, overlay: CinematicOverlay, events: AtBatEvents = {}): AtBat {
+export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, overlay: CinematicOverlay, events: AtBatEvents = {}): AtBat {
   const pitcher = createPitcher(scene);
   const batter = createBatter(scene);
   const facilities = createFacilityView(scene);

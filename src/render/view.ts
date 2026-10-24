@@ -1,11 +1,30 @@
 import { PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 import { createPixelRatioGovernor, wantsAntialias } from './pixelRatio';
 
-/** Default camera: behind and slightly above the batter, looking out at the pitcher's mound. */
+/**
+ * 打擊視角: close behind the batter, who fills the lower left foreground, with
+ * the pitcher in the middle of the screen. A narrow lens (vertical fov, degrees)
+ * makes the pitcher look bigger.
+ */
 export const BATTER_VIEW = {
-  position: [0.35, 2.3, 5.6],
-  lookAt: [-0.15, 0.9, -18],
+  position: [0.05, 1.7, 4.6],
+  lookAt: [0.1, 0.15, -18],
+  fov: 44,
 } as const;
+
+/** The wide lens for everything else (the 全壘打演出): portrait needs a taller fov to keep the wall in frame. */
+const wideFov = (aspect: number) => (aspect < 1 ? 64 : 48);
+const lensBlend = new WeakMap<PerspectiveCamera, number>();
+
+/**
+ * Sets the lens: 0 = wide, 1 = the batter view's narrow lens, in between blends
+ * (the camera coming back to the batter). Survives resizes.
+ */
+export function setLens(camera: PerspectiveCamera, batter: number): void {
+  lensBlend.set(camera, batter);
+  camera.fov = wideFov(camera.aspect) + (BATTER_VIEW.fov - wideFov(camera.aspect)) * batter;
+  camera.updateProjectionMatrix();
+}
 
 export interface View {
   renderer: WebGLRenderer;
@@ -30,9 +49,7 @@ export function createView(canvas: HTMLCanvasElement): View {
     renderer.setPixelRatio(pixelRatio.ratio());
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    // Portrait needs a taller vertical FOV to keep the outfield wall in frame.
-    camera.fov = w < h ? 64 : 48;
-    camera.updateProjectionMatrix();
+    setLens(camera, lensBlend.get(camera) ?? 1);
   };
   fit();
   window.addEventListener('resize', fit);

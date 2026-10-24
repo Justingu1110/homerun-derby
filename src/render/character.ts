@@ -1,195 +1,314 @@
 import {
-  BackSide,
-  BoxGeometry,
   CanvasTexture,
   CircleGeometry,
+  Color,
   CylinderGeometry,
-  DataTexture,
   Group,
   Mesh,
   MeshBasicMaterial,
-  MeshToonMaterial,
-  NearestFilter,
-  RedFormat,
+  MeshStandardMaterial,
   SphereGeometry,
   SRGBColorSpace,
+  TorusGeometry,
+  Vector3,
+  type Object3D,
   type Texture,
 } from 'three';
 import type { Appearance } from '../core';
 
 /**
- * Pawapuro-style characters (ADR 0001), built only from primitives and an
- * Appearance: 2-head-tall body, big round head, no arms, hands and feet that
- * float beside the body, toon shading in a few flat steps, ink outline.
+ * Pawapuro-style characters (ADR 0002), built only from primitives and an
+ * Appearance: an egg-shaped jersey body with a big round head straight on top
+ * (no neck), round pants, no arms, big round hands and two-tone shoes that
+ * float beside the body, hair showing under the cap. Soft lit materials that
+ * cast shadows; no outline.
  *
  * Local axes: the character faces +z, +y is up, origin is between the feet on
- * the ground. Its back (−z) carries the jersey number.
+ * the ground. Its back (−z) carries the name and number.
  */
 
-/** Toon shading steps (shadow, mid, lit), 0–255. Tuned by eye against the r128 prototype (110/200/255 there, without colour management). */
-const TOON_STEPS = [70, 190, 255];
-const INK = '#1b1124';
-const SHOE = '#1d1d26';
-const BELT = '#20202a';
-const EYE = '#15101c';
-const MOUTH = '#7a2b2b';
-
-/** Outline widths (m) per part. */
-const LINE = { body: 0.022, head: 0.03, cap: 0.025, small: 0.015, hand: 0.018, foot: 0.02 } as const;
+const EYE = '#141018';
+const SHOE_WHITE = '#f4f4f4';
+const GLOVE_WEB = '#5a3418';
+/** Height of the torso pivot (the hips) above the ground. */
+const HIP_Y = 0.36;
+/** Where a cuff points to: the chest, in torso space (scaled by the torso height). */
+const CHEST_Y = 0.26;
+/** How far a cuff sits from its hand's centre, toward the chest. */
+const CUFF_OFFSET = 0.19;
 
 export interface CharacterOptions {
-  /** 'cap' for fielders, 'helmet' for the batter. */
+  /** 'cap' for fielders, 'helmet' for the batter (glossy, with an ear flap). */
   headgear: 'cap' | 'helmet';
   /**
    * Which side gets the helmet ear flap, in local x: +1 = the character's left
    * (+x), −1 = its right. Only used with a helmet; it goes on the side facing the pitcher.
    */
   flapSide?: 1 | -1;
-  /** hands[0] is bare (skin colour) instead of gloved: a fielder's throwing hand. */
-  bareHand?: boolean;
+  /** hands[1] wears a big fielding glove and hands[0] is bare: a fielder. Otherwise both wear batting gloves. */
+  mitt?: boolean;
 }
 
 export interface Character {
-  /** Place / turn this in the scene. */
+  /** Place / turn this in the scene. Carries the appearance's overall scale. */
   root: Group;
   /** Body and head; rotate it to lean or twist. Pivot at the hips. */
   torso: Group;
   head: Group;
-  /** [right (−x), left (+x)], children of root. */
-  feet: [Mesh, Mesh];
-  /** Floating hands, not attached to anything: add them where they belong (root or scene). hands[1] always wears the glove. */
+  /** Shoes, [right (−x), left (+x)], children of root. Their origin is on the ground. */
+  feet: [Group, Group];
+  /** Floating hands, not attached to anything: add them where they belong (root or scene). With `mitt`, hands[1] is the glove. */
   hands: [Mesh, Mesh];
+  /** Turns each sleeve cuff toward the chest; call after moving the hands or the torso. No-op without sleeves. */
+  syncCuffs(): void;
 }
 
-let gradient: DataTexture | null = null;
-function toonGradient(): DataTexture {
-  if (gradient) return gradient;
-  gradient = new DataTexture(new Uint8Array(TOON_STEPS), TOON_STEPS.length, 1, RedFormat);
-  gradient.minFilter = gradient.magFilter = NearestFilter;
-  gradient.generateMipmaps = false;
-  gradient.needsUpdate = true;
-  return gradient;
-}
+const lit = (color: string, roughness = 0.62, metalness = 0) => new MeshStandardMaterial({ color, roughness, metalness });
 
-export const toon = (color: string, map?: Texture) =>
-  new MeshToonMaterial({ color: map ? '#ffffff' : color, map: map ?? null, gradientMap: toonGradient() });
+const SCRIPT_FONT = '"Brush Script MT", "Snell Roundhand", "Segoe Script", "Dancing Script", cursive';
+const BLOCK_FONT = '"Arial Black", "Helvetica Neue", system-ui, sans-serif';
 
-const flat = (color: string) => new MeshBasicMaterial({ color });
-
-let inkMaterial: MeshBasicMaterial | null = null;
-
-/** Inverted-hull outline: a slightly larger back-face-only copy in ink colour. */
-export function inked<T extends Mesh>(mesh: T, width: number): T {
-  inkMaterial ??= new MeshBasicMaterial({ color: INK, side: BackSide });
-  const geo = mesh.geometry;
-  geo.computeBoundingSphere();
-  const sphere = geo.boundingSphere!;
-  const k = width / sphere.radius;
-  const hull = new Mesh(geo, inkMaterial);
-  hull.scale.setScalar(1 + k);
-  hull.position.copy(sphere.center).multiplyScalar(-k);
-  mesh.add(hull);
-  return mesh;
-}
-
-/** Jersey texture: a band wrapped round the body with the number centred on the back. */
-function jerseyTexture(look: Appearance): Texture {
+/**
+ * Jersey texture, wrapped once round the body sphere: the front (u = 0.25) has
+ * the team name in script with a small number below it, the back (u = 0.75) the
+ * name over a big number.
+ */
+function uniformTexture(look: Appearance): Texture {
   const cv = document.createElement('canvas');
-  cv.width = 256;
-  cv.height = 128;
+  cv.width = 1024;
+  cv.height = 512;
   const x = cv.getContext('2d')!;
   x.fillStyle = look.jersey;
-  x.fillRect(0, 0, 256, 128);
-  x.fillStyle = look.trim;
-  x.font = '900 72px system-ui, "Arial Black", sans-serif';
+  x.fillRect(0, 0, 1024, 512);
   x.textAlign = 'center';
   x.textBaseline = 'middle';
-  // CylinderGeometry's u = 0.5 is at −z, the character's back.
-  x.fillText(look.number, 128, 68);
+  x.lineJoin = 'round';
+  x.strokeStyle = '#ffffff';
+
+  x.save();
+  x.translate(256, 235);
+  x.rotate(-0.12);
+  x.font = `italic 700 104px ${SCRIPT_FONT}`;
+  x.lineWidth = 10;
+  x.fillStyle = look.trim;
+  x.strokeText(look.team, 0, 0);
+  x.fillText(look.team, 0, 0);
+  x.fillRect(-150, 58, 290, 9);
+  x.restore();
+
+  x.font = `900 74px ${BLOCK_FONT}`;
+  x.lineWidth = 8;
+  x.fillStyle = look.frontNumberColor;
+  x.strokeText(look.number, 330, 360);
+  x.fillText(look.number, 330, 360);
+
+  x.fillStyle = look.trim;
+  if (look.nameOnBack) {
+    x.font = `900 46px ${BLOCK_FONT}`;
+    x.fillText(look.nameOnBack, 768, 175, 300);
+  }
+  x.font = `900 150px ${BLOCK_FONT}`;
+  x.lineWidth = 12;
+  x.strokeText(look.number, 768, 300);
+  x.fillText(look.number, 768, 300);
+
   const tex = new CanvasTexture(cv);
   tex.colorSpace = SRGBColorSpace;
+  tex.anisotropy = 4;
   return tex;
 }
+
+/** Tiny deterministic random source, so the same params always curl the same way. */
+const seeded = (seed: number) => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+function addHair(head: Group, look: Appearance) {
+  const hair = lit(look.hair, 0.8);
+  // Back and sides only, just below the cap.
+  head.add(new Mesh(new SphereGeometry(0.41, 32, 16, Math.PI * 0.85, Math.PI * 1.3, Math.PI * 0.42, Math.PI * 0.16), hair));
+  if (look.hairStyle === 'long') {
+    // Loose curls over the back half of the head, falling to the shoulders.
+    const curls = lit(look.hair, 0.85);
+    const r = seeded(7);
+    for (let k = 0; k < 34; k++) {
+      const a = Math.PI * (1.05 + 0.9 * r());
+      const y = -0.02 - 0.36 * r();
+      const rad = 0.37 + 0.06 * r();
+      const curl = new Mesh(new SphereGeometry(0.075 + 0.04 * r(), 10, 8), curls);
+      curl.position.set(Math.cos(a) * rad, y, Math.sin(a) * rad * 0.95 - 0.03);
+      head.add(curl);
+    }
+  }
+  if (look.hairStyle === 'pigtails') {
+    for (const s of [-1, 1]) {
+      const tie = new Mesh(new TorusGeometry(0.045, 0.018, 8, 16), lit(look.cap, 0.5));
+      tie.position.set(s * 0.4, 0, -0.12);
+      tie.rotation.y = Math.PI / 2;
+      const tail = new Mesh(new SphereGeometry(0.09, 14, 10), lit(look.hair, 0.85));
+      tail.scale.set(0.8, 1.6, 0.8);
+      tail.position.set(s * 0.47, -0.14, -0.13);
+      tail.rotation.z = s * 0.35;
+      head.add(tie, tail);
+    }
+  }
+}
+
+function addFace(head: Group, look: Appearance) {
+  const skin = lit(look.skin, 0.75);
+  const skull = new Mesh(new SphereGeometry(0.4, 40, 30), skin);
+  skull.scale.set(1.04, 0.97, 1);
+  head.add(skull);
+  const ear = lit(`#${new Color(look.skin).multiplyScalar(0.94).getHexString()}`, 0.75);
+  const eyeMat = lit(EYE, 0.25);
+  const shineMat = new MeshBasicMaterial({ color: '#ffffff' });
+  const browMat = lit(look.hair, 0.8);
+  for (const s of [-1, 1]) {
+    const e = new Mesh(new SphereGeometry(0.07, 14, 10), ear);
+    e.scale.set(0.5, 1, 0.8);
+    e.position.set(s * 0.405, -0.02, 0);
+    // Upright oval eyes with a highlight, thick brows.
+    const eye = new Mesh(new SphereGeometry(0.052, 20, 14), eyeMat);
+    eye.scale.set(0.82, 1.6, 0.4);
+    eye.position.set(s * 0.14, 0.02, 0.375);
+    const shine = new Mesh(new SphereGeometry(0.017, 10, 8), shineMat);
+    shine.position.set(s * 0.14 + 0.018, 0.065, 0.395);
+    const brow = new Mesh(new SphereGeometry(0.055, 14, 8), browMat);
+    brow.scale.set(1, 0.26, 0.3);
+    brow.rotation.z = s * 0.12;
+    brow.position.set(s * 0.14, 0.15, 0.37);
+    head.add(e, eye, shine, brow);
+  }
+  if (look.beard === 'mustache') {
+    const m = new Mesh(new SphereGeometry(0.06, 14, 10), browMat);
+    m.scale.set(1.8, 0.45, 0.45);
+    m.position.set(0, -0.12, 0.37);
+    head.add(m);
+  }
+  if (look.goatee) {
+    const g = new Mesh(new SphereGeometry(0.055, 14, 10), lit(look.hair, 0.85));
+    g.scale.set(1.1, 0.8, 0.6);
+    g.position.set(0, -0.27, 0.31);
+    head.add(g);
+  }
+}
+
+function addHeadgear(head: Group, look: Appearance, opts: CharacterOptions) {
+  const helmet = opts.headgear === 'helmet';
+  // The helmet is glossy (low roughness, a touch of metalness for the sheen); the cap is cloth.
+  const mat = helmet ? lit(look.cap, 0.18, 0.15) : lit(look.cap, 0.7);
+  const dome = new Mesh(new SphereGeometry(helmet ? 0.445 : 0.425, 40, 20, 0, Math.PI * 2, 0, Math.PI * 0.5), mat);
+  dome.position.y = 0.03;
+  // Half-disc brim, only in front.
+  const brim = new Mesh(new CylinderGeometry(0.22, 0.24, 0.035, 28, 1, false, 0, Math.PI), mat);
+  brim.rotation.set(-0.12, -Math.PI / 2, 0);
+  brim.scale.set(1, 1, helmet ? 0.55 : 0.8);
+  brim.position.set(0, 0.06, 0.32);
+  head.add(dome, brim);
+  if (helmet) {
+    const flap = new Mesh(new SphereGeometry(0.2, 20, 14), mat);
+    flap.scale.set(0.45, 1, 0.95);
+    flap.position.set((opts.flapSide ?? 1) * 0.39, -0.08, 0.02);
+    head.add(flap);
+  } else {
+    const badge = new Mesh(new CircleGeometry(0.075, 24), new MeshBasicMaterial({ color: look.trim }));
+    badge.position.set(0, 0.25, 0.36);
+    badge.rotation.x = -0.62;
+    head.add(badge);
+  }
+}
+
+/** Big two-tone shoe: coloured upper, white toe cap and sole. Origin on the ground. */
+function shoe(look: Appearance): Group {
+  const f = new Group();
+  const upper = new Mesh(new SphereGeometry(0.12, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), lit(look.shoe, 0.5));
+  upper.scale.set(1.15, 1, 1.85);
+  const toe = new Mesh(new SphereGeometry(0.1, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), lit(SHOE_WHITE, 0.45));
+  toe.scale.set(1.1, 0.9, 0.9);
+  toe.position.z = 0.12;
+  const sole = new Mesh(new CylinderGeometry(0.135, 0.135, 0.03, 24), lit(SHOE_WHITE, 0.6));
+  sole.scale.set(1.02, 1, 1.75);
+  sole.position.y = 0.012;
+  f.add(upper, toe, sole);
+  return f;
+}
+
+/** A round hand; the fielding glove is bigger (nearly head-sized) with a darker web. Shape is baked into the geometry so children (the cuff) are not stretched. */
+function hand(look: Appearance, glove: boolean, bare: boolean): Mesh {
+  if (!glove) return new Mesh(new SphereGeometry(0.15, 28, 20), lit(bare ? look.skin : look.glove, 0.7));
+  const g = new Mesh(new SphereGeometry(0.19, 28, 20).scale(1, 1.08, 0.78), lit(look.glove, 0.55));
+  const web = new Mesh(new SphereGeometry(0.12, 18, 12).scale(0.9, 0.9, 0.5), lit(GLOVE_WEB, 0.6));
+  web.position.set(0, 0.05, 0.12);
+  g.add(web);
+  return g;
+}
+
+const castShadows = (o: Object3D) =>
+  o.traverse((m) => {
+    if ((m as Mesh).isMesh) m.castShadow = true;
+  });
 
 /** Builds a character from appearance params. Same params → same look. */
 export function buildCharacter(look: Appearance, opts: CharacterOptions): Character {
   const root = new Group();
+  root.scale.setScalar(look.scale);
   const torso = new Group();
-  torso.position.y = 0.36;
+  torso.position.y = HIP_Y;
   root.add(torso);
-  const part = (parent: Group, mesh: Mesh, line = 0) => {
-    parent.add(line ? inked(mesh, line) : mesh);
-    return mesh;
-  };
 
-  // Body: jersey (number on the back), rounded shoulders, belt, hips, little legs.
-  const body = part(torso, new Mesh(new CylinderGeometry(0.27, 0.31, 0.42, 28), toon(look.jersey, jerseyTexture(look))), LINE.body);
-  body.position.y = 0.22;
-  const shoulders = part(torso, new Mesh(new SphereGeometry(0.27, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), toon(look.jersey)));
-  shoulders.position.y = 0.43;
-  shoulders.scale.y = 0.45;
-  const belt = part(torso, new Mesh(new CylinderGeometry(0.315, 0.315, 0.06, 28), toon(BELT)));
-  belt.position.y = 0;
-  const hips = part(torso, new Mesh(new CylinderGeometry(0.31, 0.27, 0.14, 28), toon(look.pants)), LINE.body);
-  hips.position.y = -0.1;
-  for (const s of [-1, 1]) {
-    const leg = part(torso, new Mesh(new SphereGeometry(0.13, 16, 12), toon(look.pants)), LINE.body);
-    leg.scale.set(1, 1.15, 1);
-    leg.position.set(s * 0.14, -0.22, 0);
-  }
+  // Egg-shaped jersey over round pants and a belt; width and torso height stretch only the body.
+  const body = new Group();
+  body.scale.set(look.width, look.torsoHeight, look.width);
+  torso.add(body);
+  const jersey = new Mesh(new SphereGeometry(0.33, 40, 28), new MeshStandardMaterial({ map: uniformTexture(look), roughness: 0.7 }));
+  jersey.scale.set(1, 1.02, 0.9);
+  jersey.position.y = 0.2;
+  const pants = new Mesh(new SphereGeometry(0.31, 36, 24, 0, Math.PI * 2, Math.PI * 0.42, Math.PI * 0.58), lit(look.pants, 0.75));
+  pants.scale.set(1.02, 0.95, 0.92);
+  pants.position.y = 0.08;
+  const belt = new Mesh(new TorusGeometry(0.305, 0.024, 10, 40), lit(look.belt, 0.5));
+  belt.rotation.x = Math.PI / 2;
+  belt.scale.set(1, 0.9, 1);
+  belt.position.y = 0.06;
+  body.add(jersey, pants, belt);
 
-  // Head: big round face, vertical oval eyes with a highlight, brows, small mouth, no nose.
+  // Big round head right on the body (no neck).
   const head = new Group();
-  head.position.y = 0.84;
+  head.position.y = 0.64 + (look.torsoHeight - 1) * 0.42;
+  head.scale.setScalar(look.headScale);
   torso.add(head);
-  part(head, new Mesh(new SphereGeometry(0.42, 32, 24), toon(look.skin)), LINE.head);
-  for (const s of [-1, 1]) {
-    const eye = new Mesh(new SphereGeometry(0.055, 16, 12), flat(EYE));
-    eye.scale.set(1, 1.75, 0.5);
-    eye.position.set(s * 0.13, 0, 0.39);
-    const shine = new Mesh(new SphereGeometry(0.018, 8, 6), flat('#ffffff'));
-    shine.position.set(s * 0.13 + 0.018, 0.05, 0.415);
-    const brow = new Mesh(new BoxGeometry(0.1, 0.022, 0.02), flat(EYE));
-    brow.position.set(s * 0.13, 0.15, 0.385);
-    brow.rotation.z = s * -0.12;
-    head.add(eye, shine, brow);
-  }
-  const mouth = new Mesh(new BoxGeometry(0.07, 0.014, 0.01), flat(MOUTH));
-  mouth.position.set(0, -0.17, 0.4);
-  head.add(mouth);
+  addFace(head, look);
+  addHair(head, look);
+  addHeadgear(head, look, opts);
 
-  // Headgear: a cap (dome + long brim) or a batting helmet (deeper dome, short brim, ear flap).
-  const helmet = opts.headgear === 'helmet';
-  const dome = part(
-    head,
-    new Mesh(new SphereGeometry(helmet ? 0.45 : 0.44, 32, 16, 0, Math.PI * 2, 0, Math.PI * (helmet ? 0.56 : 0.5)), toon(look.cap)),
-    LINE.cap,
-  );
-  dome.position.y = helmet ? 0.04 : 0.03;
-  const brim = part(head, new Mesh(new CylinderGeometry(0.22, 0.22, 0.03, 24), toon(look.cap)), LINE.small);
-  brim.scale.set(1.25, 1, helmet ? 0.8 : 1);
-  brim.position.set(0, 0.05, helmet ? 0.41 : 0.43);
-  const badge = new Mesh(new CircleGeometry(0.08, 20), flat(look.trim));
-  badge.position.set(0, 0.26, helmet ? 0.385 : 0.37);
-  badge.rotation.x = -0.6;
-  head.add(badge);
-  if (helmet) {
-    const flap = part(head, new Mesh(new SphereGeometry(0.17, 16, 12), toon(look.cap)), LINE.small);
-    flap.scale.set(0.5, 1, 1);
-    flap.position.set((opts.flapSide ?? 1) * 0.4, -0.06, 0.02);
-  }
+  const feet: [Group, Group] = [shoe(look), shoe(look)];
+  feet.forEach((f, i) => f.position.set((i === 0 ? -1 : 1) * 0.16, 0, 0.05));
+  root.add(...feet);
 
-  // Floating feet and hands.
-  const foot = (side: number) => {
-    const m = inked(new Mesh(new SphereGeometry(0.1, 16, 10), toon(SHOE)), LINE.foot);
-    m.scale.set(1.2, 0.65, 1.7);
-    m.position.set(side * 0.15, 0.06, 0.05);
-    root.add(m);
-    return m;
+  const hands: [Mesh, Mesh] = [hand(look, false, !!opts.mitt), hand(look, !!opts.mitt, false)];
+
+  // No arms: the undershirt sleeve shows as a cuff just inside each hand.
+  const cuffs = look.sleeve
+    ? hands.map((h) => {
+        const c = new Mesh(new SphereGeometry(0.12, 16, 12).scale(1, 1, 1.4), lit(look.sleeve!, 0.6));
+        h.add(c);
+        return c;
+      })
+    : [];
+  const chest = new Vector3();
+  const local = new Vector3();
+  const syncCuffs = () => {
+    if (!cuffs.length) return;
+    root.updateWorldMatrix(true, true);
+    torso.localToWorld(chest.set(0, CHEST_Y * look.torsoHeight, 0));
+    cuffs.forEach((c, i) => {
+      const h = hands[i];
+      h.updateWorldMatrix(true, false);
+      h.worldToLocal(local.copy(chest));
+      c.position.copy(local.normalize()).multiplyScalar(CUFF_OFFSET);
+      c.lookAt(chest);
+    });
   };
-  const hand = (color: string) => inked(new Mesh(new SphereGeometry(0.1, 16, 12), toon(color)), LINE.hand);
-  const feet: [Mesh, Mesh] = [foot(-1), foot(1)];
-  const hands: [Mesh, Mesh] = [hand(opts.bareHand ? look.skin : look.glove), hand(look.glove)];
 
-  return { root, torso, head, feet, hands };
+  castShadows(root);
+  hands.forEach(castShadows);
+  return { root, torso, head, feet, hands, syncCuffs };
 }

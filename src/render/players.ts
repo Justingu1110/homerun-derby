@@ -1,6 +1,6 @@
-import { CylinderGeometry, Mesh, Vector3, type Object3D, type Scene } from 'three';
+import { LatheGeometry, Mesh, MeshStandardMaterial, Vector2, Vector3, type Object3D, type Scene } from 'three';
 import { makeAppearance, type Appearance } from '../core';
-import { buildCharacter, inked, toon } from './character';
+import { buildCharacter } from './character';
 
 /**
  * The batter and the pitcher: pawapuro-style characters (see character.ts)
@@ -24,6 +24,12 @@ export const PITCHER_LOOK = makeAppearance({
   trim: '#ffffff',
   glove: '#8b5a2b',
   number: '18',
+  sleeve: '#1b2f78',
+  belt: '#1b2f78',
+  shoe: '#2a4fb8',
+  team: 'Stars',
+  frontNumberColor: '#ffffff',
+  nameOnBack: 'ACE',
 });
 
 /** Where the bat meets an on-time pitch, in world space. */
@@ -31,17 +37,33 @@ export const CONTACT_POINT = new Vector3();
 /** Where the ball leaves the pitcher's hand, in world space. */
 export const RELEASE_POINT = new Vector3(-0.3, 1.65, -17.85);
 
-const HANDS = new Vector3(-0.53, 0.82, 0.2);
+/**
+ * Batter's hands (world): set back by the rear shoulder, out over the plate at
+ * contact, high over the front shoulder at the finish. They stay outside the
+ * helmet, and the bat points away from it, all the way through.
+ */
+const STANCE_HANDS = new Vector3(-0.42, 0.98, 0.72);
+const CONTACT_HANDS = new Vector3(-0.2, 0.8, 0.2);
+const FINISH_HANDS = new Vector3(-0.34, 1.42, -0.34);
+/** From the hands to the sweet spot. */
+const CONTACT_REACH = 0.62;
 const UP = new Vector3(0, 1, 0);
-const BAT_LENGTH = 1.0;
-const BAT_COLOR = '#d9a55b';
+const BAT_COLOR = '#e8cf9a';
+
+/** A turned bat: knob, thin handle, swelling to a thick barrel, rounded end. Origin at the knob, along +y. */
+function batGeometry(): LatheGeometry {
+  const profile: [r: number, y: number][] = [
+    [0, 0], [0.034, 0], [0.036, 0.02], [0.024, 0.05], [0.024, 0.32], [0.04, 0.55], [0.058, 0.78], [0.064, 0.93], [0.05, 0.99], [0, 1],
+  ];
+  return new LatheGeometry(profile.map(([r, y]) => new Vector2(r * 1.25, y * 1.05)), 24);
+}
 
 function batDir(yawDeg: number, elevDeg: number, out: Vector3): Vector3 {
   const y = yawDeg * DEG;
   const e = elevDeg * DEG;
   return out.set(Math.sin(y) * Math.cos(e), Math.sin(e), Math.cos(y) * Math.cos(e));
 }
-CONTACT_POINT.copy(HANDS).addScaledVector(batDir(90, 5, new Vector3()), 0.72);
+CONTACT_POINT.copy(CONTACT_HANDS).addScaledVector(batDir(90, 5, new Vector3()), CONTACT_REACH);
 
 export interface Batter {
   /** 0 = stance, 0.4 = bat over the plate (contact), 1 = follow-through. */
@@ -57,10 +79,10 @@ export function createBatter(scene: Scene, look: Appearance = BATTER_LOOK): Batt
   f.root.position.set(-0.75, 0, 0.2);
   f.root.rotation.y = Math.PI / 2;
   scene.add(f.root, ...f.hands);
-  const batGeo = new CylinderGeometry(0.055, 0.028, BAT_LENGTH, 12);
-  batGeo.translate(0, BAT_LENGTH / 2, 0);
-  const bat = inked(new Mesh(batGeo, toon(BAT_COLOR)), 0.012);
+  const bat = new Mesh(batGeometry(), new MeshStandardMaterial({ color: BAT_COLOR, roughness: 0.45 }));
+  bat.castShadow = true;
   scene.add(bat);
+  const hands = new Vector3();
   const dir = new Vector3();
   const [, front] = f.feet;
   const frontHome = front.position.clone();
@@ -69,22 +91,25 @@ export function createBatter(scene: Scene, look: Appearance = BATTER_LOOK): Batt
     let yaw: number;
     let elev: number;
     if (a <= 0.4) {
-      const u = easeIn(a / 0.4);
-      yaw = -15 + 105 * u;
-      elev = 62 - 57 * u;
+      const u = easeIn(clamp01(a / 0.4));
+      yaw = 10 + 80 * u;
+      elev = 58 - 53 * u;
+      hands.lerpVectors(STANCE_HANDS, CONTACT_HANDS, u);
     } else {
-      const u = easeOut((a - 0.4) / 0.6);
-      yaw = 90 + 175 * u;
-      elev = 5 + 40 * u;
+      const u = easeOut(clamp01((a - 0.4) / 0.6));
+      yaw = 90 + 130 * u;
+      elev = 5 + 62 * u;
+      hands.lerpVectors(CONTACT_HANDS, FINISH_HANDS, u);
     }
     batDir(yaw, elev, dir);
-    bat.position.copy(HANDS);
+    bat.position.copy(hands);
     bat.quaternion.setFromUnitVectors(UP, dir);
-    f.hands[0].position.copy(HANDS).addScaledVector(dir, 0.04);
-    f.hands[1].position.copy(HANDS).addScaledVector(dir, 0.16);
+    f.hands[0].position.copy(hands).addScaledVector(dir, 0.05);
+    f.hands[1].position.copy(hands).addScaledVector(dir, 0.24);
     // Hips turn through contact; a small lean into the ball, then back up on the follow-through.
     f.torso.rotation.y = 0.9 * smooth(clamp01(a / 0.55));
     f.torso.rotation.z = -0.12 * Math.sin(Math.PI * clamp01(a / 0.8));
+    f.syncCuffs();
   };
 
   const setStride = (u: number) => {
@@ -92,6 +117,7 @@ export function createBatter(scene: Scene, look: Appearance = BATTER_LOOK): Batt
     front.position.set(frontHome.x + 0.14 * smooth(s), frontHome.y + 0.12 * Math.sin(Math.PI * s), frontHome.z);
     // Weight shifts back while the foot is up (load), then forward as it lands.
     f.torso.position.x = 0.05 * smooth(s) - 0.05 * Math.sin(Math.PI * s);
+    f.syncCuffs();
   };
 
   setSwing(0);
@@ -134,9 +160,10 @@ function track(keys: Key[], t: number, out: Vector3): Vector3 {
   return out.set(lerp(a[1], b[1], u), lerp(a[2], b[2], u), lerp(a[3], b[3], u));
 }
 
-/** Right-handed pitcher on the mound, facing the plate (+z). */
+/** Pitcher on the mound, facing the plate (+z). A left-hander (look.lefty) is the right-hander's motion mirrored. */
 export function createPitcher(scene: Scene, look: Appearance = PITCHER_LOOK): Pitcher {
-  const f = buildCharacter(look, { headgear: 'cap', bareHand: true });
+  const f = buildCharacter(look, { headgear: 'cap', mitt: true });
+  const sx = look.lefty ? -1 : 1;
   f.root.position.set(0, 0.3, -18.4);
   f.root.add(...f.hands);
   scene.add(f.root);
@@ -145,18 +172,19 @@ export function createPitcher(scene: Scene, look: Appearance = PITCHER_LOOK): Pi
   const pivotHome = pivot.position.clone();
 
   const setWindup = (t: number) => {
-    track(BALL_HAND, t, f.hands[0].position);
-    track(GLOVE_HAND, t, f.hands[1].position);
+    track(BALL_HAND, t, f.hands[0].position).x *= sx;
+    track(GLOVE_HAND, t, f.hands[1].position).x *= sx;
     // Lean back through the windup, then drive forward over the front leg.
     f.torso.rotation.x = t < 0.7 ? -0.25 * smooth(clamp01(t / 0.7)) : -0.25 + 0.6 * smooth(clamp01((t - 0.7) / 0.3));
     // Coil (turn the back to the batter a little) on the leg kick, uncoil on the throw.
-    f.torso.rotation.y = -0.5 * Math.sin(Math.PI * clamp01((t - 0.2) / 0.62));
+    f.torso.rotation.y = -0.5 * sx * Math.sin(Math.PI * clamp01((t - 0.2) / 0.62));
     // Leg kick with the lead (glove-side) leg, then a stride toward the plate.
     const kick = clamp01((t - 0.3) / 0.55);
-    lead.position.set(leadHome.x, leadHome.y + 0.38 * Math.sin(Math.PI * kick), leadHome.z + 0.35 * smooth(kick));
+    lead.position.set(leadHome.x * sx, leadHome.y + 0.38 * Math.sin(Math.PI * kick), leadHome.z + 0.35 * smooth(kick));
     // The pivot foot drags forward on the follow-through.
     const drag = clamp01((t - 0.85) / 0.35);
-    pivot.position.set(pivotHome.x + 0.08 * drag, pivotHome.y + 0.08 * Math.sin(Math.PI * drag), pivotHome.z + 0.2 * smooth(drag));
+    pivot.position.set(sx * (pivotHome.x + 0.08 * drag), pivotHome.y + 0.08 * Math.sin(Math.PI * drag), pivotHome.z + 0.2 * smooth(drag));
+    f.syncCuffs();
   };
   setWindup(0);
   return { setWindup, hand: f.hands[0] };

@@ -10,6 +10,7 @@ import { localBestScoreStorage } from './app/storage';
 import { createAtBat } from './render/atBat';
 import { createCinematicOverlay } from './render/cinematicOverlay';
 import { createHud } from './render/hud';
+import { enablePlayerShadows } from './render/lighting';
 import { buildStadium } from './render/stadium';
 import { createView } from './render/view';
 
@@ -39,6 +40,7 @@ const atBat = createAtBat(view.scene, view.camera, hud, createCinematicOverlay(c
     feedback.vibrate([70, 40, 140]);
   },
 });
+enablePlayerShadows(view.renderer, view.scene);
 const storage = localBestScoreStorage();
 const difficultyStorage = localDifficultyStorage();
 

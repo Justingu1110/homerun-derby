@@ -5,7 +5,7 @@ import {
   Quaternion,
   TubeGeometry,
   Vector3,
-  type Camera,
+  type PerspectiveCamera,
   type Scene,
 } from 'three';
 import { FIELD, type HomeRun, type TimingGrade } from '../core';
@@ -15,7 +15,7 @@ import { seededRandom } from './coords';
 import { FACILITY_POP, type FacilityView } from './facilities';
 import { TIMING_LABEL } from './hud';
 import { CONTACT_POINT, RELEASE_POINT, type Batter, type Pitcher } from './players';
-import { BATTER_VIEW } from './view';
+import { BATTER_VIEW, setLens } from './view';
 
 /**
  * 全壘打演出: the director. A home run plays a list of shots (camera, poses,
@@ -120,7 +120,7 @@ const STANDS_POP = '落入觀眾席';
 
 export interface CinematicCast {
   scene: Scene;
-  camera: Camera;
+  camera: PerspectiveCamera;
   ball: Mesh;
   batter: Batter;
   pitcher: Pitcher;
@@ -276,6 +276,8 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
   const pose = (p: Plan, i: number, t: number, ms: number) => {
     const s = p.shots[i];
     const { dir, perp, side, to } = p;
+    // Wide lens for the show, narrowing back to the batter view's on the way home.
+    setLens(camera, s.id === 'return' ? smooth(clamp01(t / s.dur)) : 0);
     pitcher.setWindup(s.id === 'return' ? 0 : 1.2);
     batter.setStride(s.id === 'return' ? 0 : 1);
     switch (s.id) {
@@ -433,6 +435,7 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
     }
     overlay.clear();
     setCam(...BATTER_VIEW.position, ...BATTER_VIEW.lookAt);
+    setLens(camera, 1);
     plan = null;
   };
 
