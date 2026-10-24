@@ -1,7 +1,7 @@
 <title>全壘打分鏡原型</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Noto+Sans+TC:wght@500;700;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Pacifico&family=Noto+Sans+TC:wght@500;700;900&display=swap">
 <style>
 /* PROTOTYPE (throwaway): 全壘打演出分鏡。全螢幕 3D 場景 + 上方分鏡進度 + 下方控制列。單一夜場配色。 */
 :root{
@@ -500,25 +500,34 @@ function uniformTex(c) {
   x.fillStyle = c.shirt; x.fillRect(0, 0, 1024, 512);
   if (c.stripes) { x.fillStyle = c.stripes; for (let i = 0; i < 1024; i += 34) x.fillRect(i, 0, 4, 512); }
   x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
-  // front (u = .25): team script; back (u = .75): name over number
-  x.font = 'italic 900 92px "Bungee", "Noto Sans TC", sans-serif'; x.lineWidth = 10; x.strokeStyle = c.trim2 || '#ffffff'; x.fillStyle = c.trim;
-  x.strokeText(c.team || 'Moons', 256, 250); x.fillText(c.team || 'Moons', 256, 250);
-  x.font = '900 46px "Bungee", "Noto Sans TC", sans-serif'; x.fillText(c.nameEn || '', 768, 175);
+  // front (u = .25): team script (+ small number); back (u = .75): name over number
+  x.save(); x.translate(256, 235); x.rotate(-0.12);
+  x.font = '400 108px "Pacifico", "Bungee", cursive'; x.lineWidth = 10; x.strokeStyle = c.trim2 || '#ffffff'; x.fillStyle = c.trim;
+  x.strokeText(c.team || 'Moons', 0, 0); x.fillText(c.team || 'Moons', 0, 0);
+  x.fillRect(-150, 58, 290, 9); x.restore();
+  if (c.numColor) { x.font = '900 78px "Bungee", sans-serif'; x.fillStyle = c.numColor; x.lineWidth = 8; x.strokeText(c.num, 330, 360); x.fillText(c.num, 330, 360); }
+  x.fillStyle = c.trim; x.font = '900 46px "Bungee", "Noto Sans TC", sans-serif'; x.fillText(c.nameEn || '', 768, 175);
   x.font = '900 150px "Bungee", "Noto Sans TC", sans-serif'; x.lineWidth = 12; x.strokeText(c.num, 768, 300); x.fillText(c.num, 768, 300);
   const t = new THREE.CanvasTexture(cv); t.anisotropy = 4; return t;
 }
+const JERSEYS = [];
+document.fonts && document.fonts.load('400 108px "Pacifico"').then(() => document.fonts.load('900 46px "Bungee"')).then(() =>
+  JERSEYS.forEach(({ mat, c }) => { mat.map.dispose(); mat.map = uniformTex(c); mat.needsUpdate = true; })).catch(() => {});
 function pawa2(c) {
   const g = new THREE.Group(), torso = new THREE.Group(); torso.position.y = 0.36; g.add(torso);
-  const bw = { slim: 0.88, normal: 1, big: 1.22 }[c.build || 'normal'];
-  const body = new THREE.Group(); body.scale.set(bw, c.build === 'big' ? 1.08 : 1, bw); torso.add(body);
-  const jersey = new THREE.Mesh(new THREE.SphereGeometry(0.33, 40, 28), new THREE.MeshStandardMaterial({ map: uniformTex(c), roughness: 0.7 }));
+  // body shape: w = girth, h = torso height, scale = whole figure (a kid is ~0.78)
+  const bw = c.w || { slim: 0.88, normal: 1, big: 1.22 }[c.build || 'normal'], bh = c.h || (c.build === 'big' ? 1.08 : 1);
+  g.scale.setScalar(c.scale || 1);
+  const body = new THREE.Group(); body.scale.set(bw, bh, bw); torso.add(body);
+  const jMat = new THREE.MeshStandardMaterial({ map: uniformTex(c), roughness: 0.7 }); JERSEYS.push({ mat: jMat, c });
+  const jersey = new THREE.Mesh(new THREE.SphereGeometry(0.33, 40, 28), jMat);
   jersey.scale.set(1, 1.02, 0.9); jersey.position.y = 0.2; body.add(jersey);
   const pants = new THREE.Mesh(new THREE.SphereGeometry(0.31, 36, 24, 0, Math.PI * 2, Math.PI * 0.42, Math.PI * 0.58), sm(c.pants, 0.75));
   pants.scale.set(1.02, 0.95, 0.92); pants.position.y = 0.08; body.add(pants);
-  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.305, 0.024, 10, 40), sm('#1d1d26', 0.5)); belt.rotation.x = Math.PI / 2; belt.scale.set(1, 0.9, 1); belt.position.y = 0.06; body.add(belt);
-  const head = new THREE.Group(); head.position.y = c.build === 'big' ? 0.7 : 0.64; torso.add(head);
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.305, 0.024, 10, 40), sm(c.belt || '#1d1d26', 0.5)); belt.rotation.x = Math.PI / 2; belt.scale.set(1, 0.9, 1); belt.position.y = 0.06; body.add(belt);
+  const head = new THREE.Group(); head.position.y = 0.64 + (bh - 1) * 0.42; head.scale.setScalar(c.headScale || 1); torso.add(head);
   const skull = new THREE.Mesh(new THREE.SphereGeometry(0.4, 40, 30), sm('#ffd6b0', 0.75)); skull.scale.set(1.04, 0.97, 1); head.add(skull);
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.41, 32, 16, Math.PI * 0.85, Math.PI * 1.3, Math.PI * 0.3, Math.PI * 0.3), sm(c.hair || '#2a1d16', 0.8));
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.41, 32, 16, Math.PI * 0.85, Math.PI * 1.3, Math.PI * 0.42, Math.PI * 0.16), sm(c.hair || '#2a1d16', 0.8));
   head.add(hair);   // back and sides only, below the cap
   [-1, 1].forEach(sx => {
     const ear = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 10), sm('#f5c79e', 0.75)); ear.scale.set(0.5, 1, 0.8); ear.position.set(sx * 0.405, -0.02, 0); head.add(ear);
@@ -531,6 +540,22 @@ function pawa2(c) {
   const ink = sm('#141018', 0.4);
   if (c.glasses) [-1, 1].forEach(sx => { const r = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 8, 24), ink); r.position.set(sx * 0.14, 0.02, 0.395); head.add(r); });
   if (c.beard === 'mustache') { const m = new THREE.Mesh(new THREE.SphereGeometry(0.06, 14, 10), sm(c.hair || '#2a1d16', 0.8)); m.scale.set(1.8, 0.45, 0.45); m.position.set(0, -0.12, 0.37); head.add(m); }
+  if (c.goatee) { const gt = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 10), sm(c.hair || '#2a1d16', 0.85)); gt.scale.set(1.1, 0.8, 0.6); gt.position.set(0, -0.27, 0.31); head.add(gt); }
+  if (c.hairStyle === 'long') {   // shoulder-length curls around the back and sides
+    const hm = sm(c.hair || '#6b4a2e', 0.85);
+    let seed = 7; const rr = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let k = 0; k < 34; k++) {   // loose curls over the back half of the head, falling to the shoulders
+      const a = Math.PI * (1.05 + 0.9 * rr()), y = -0.02 - 0.36 * rr(), rad = 0.37 + 0.06 * rr();
+      const curl = new THREE.Mesh(new THREE.SphereGeometry(0.075 + 0.04 * rr(), 10, 8), hm);
+      curl.position.set(Math.cos(a) * rad, y, Math.sin(a) * rad * 0.95 - 0.03); head.add(curl);
+    }
+  }
+  if (c.hairStyle === 'pigtails') {
+    [-1, 1].forEach(sx => {
+      const tie = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.018, 8, 16), sm(c.cap, 0.5)); tie.position.set(sx * 0.4, 0.0, -0.12); tie.rotation.y = Math.PI / 2; head.add(tie);
+      const tail = new THREE.Mesh(new THREE.SphereGeometry(0.09, 14, 10), sm(c.hair || '#3a2618', 0.85)); tail.scale.set(0.8, 1.6, 0.8); tail.position.set(sx * 0.47, -0.14, -0.13); tail.rotation.z = sx * 0.35; head.add(tail);
+    });
+  }
   if (c.beard === 'beard') { const b = new THREE.Mesh(new THREE.SphereGeometry(0.402, 28, 14, Math.PI * 0.05, Math.PI * 0.9, Math.PI * 0.6, Math.PI * 0.3), sm(c.hair || '#2a1d16', 0.85)); head.add(b); }
   // cap or helmet
   const capMat = c.helmet ? sm(c.cap, 0.18, 0.15) : sm(c.cap, 0.7);
@@ -554,26 +579,30 @@ function pawa2(c) {
     if (isGlove) { h.scale.set(1, 1.08, 0.78); const web = new THREE.Mesh(new THREE.SphereGeometry(0.12, 18, 12), sm('#5a3418', 0.6)); web.scale.set(0.9, 0.9, 0.5); web.position.set(0, 0.05, 0.12); h.add(web); }
     return h;
   });
+  const cuffs = c.sleeve ? [0, 1].map(() => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 12), sm(c.sleeve, 0.6)); m.scale.set(1, 1, 1.4); g.add(m); return m; }) : null;
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   hands.forEach(h => h.traverse(o => { if (o.isMesh) o.castShadow = true; }));
-  return { g, torso, head, feet, hands };
+  return { g, torso, head, feet, hands, cuffs, lefty: !!c.lefty };
 }
 const batter = pawa2({ shirt: '#f7f7f7', stripes: '#c9cfe0', pants: '#f2f2f2', cap: '#1f2a6b', glove: '#ffffff', num: '55', nameEn: 'GU', team: 'Moons', trim: '#1f2a6b', helmet: true, shoe: '#1f2a6b', hair: '#2a1d16' });
 batter.g.position.set(-0.75, 0, 0.2); batter.g.rotation.y = Math.PI / 2; scene.add(batter.g);
 batter.hands.forEach(h => scene.add(h));
 
-// 難度 → 投手 (names, looks and effects are placeholders)
+// 難度 → 投手
+const DODGER = { team: 'Dodgers', trim: '#1e4fa3', numColor: '#e0393e', cap: '#1e4fa3', sleeve: '#1e4fa3', belt: '#1e4fa3', shoe: '#1e4fa3', hair: '#1a1410' };
+const GRAY = '#b9bec8', WHITE = '#f6f6f6';
 const DIFFS = [
-  { key: 'easy',    label: '簡易', name: '古享恬',     mult: 1.0, types: ['直球'], speeds: ['slow'], fx: 0,
-    look: { shirt: '#7cc576', pants: '#f4f4f4', cap: '#ffffff', glove: '#c08850', num: '1',  trim: '#2f7a2b', build: 'slim', glasses: true } },
-  { key: 'normal',  label: '普通', name: '暫定投手 B', mult: 1.3, types: ['直球', '變速球'], speeds: ['mid'], fx: 1,
-    look: { shirt: '#ff9a3d', pants: '#f4f4f4', cap: '#c45a00', glove: '#8b5a2b', num: '21', trim: '#ffffff', build: 'normal', beard: 'mustache' } },
-  { key: 'hard',    label: '困難', name: '暫定投手 C', mult: 1.6, types: ['直球', '變速球', '曲球'], speeds: ['mid'], fx: 2,
-    look: { shirt: '#6a3fb8', pants: '#e8e8f0', cap: '#3d2380', glove: '#2a2a2a', num: '34', trim: '#ffd23d', build: 'normal', beard: 'beard' } },
-  { key: 'extreme', label: '極難', name: '暫定投手 D', mult: 2.0, types: ['直球', '變速球', '曲球'], speeds: ['fast'], fx: 3,
-    look: { shirt: '#1b1b24', pants: '#2c2c38', cap: '#ffc83d', glove: '#ffc83d', num: '11', trim: '#ffc83d', build: 'big', fierce: true } },
-  { key: 'hell',    label: '地獄', name: '山本由伸',   mult: 2.5, types: ['直球', '變速球', '曲球'], speeds: ['slow', 'mid', 'fast'], fx: 4,
-    look: { shirt: '#7a0f14', pants: '#1a1012', cap: '#1a1012', glove: '#1a1012', num: '18', trim: '#ff5a2a', build: 'big', fierce: true } },
+  { key: 'easy',    label: '簡易', name: 'Luna',     mult: 1.0, types: ['直球'], speeds: ['slow'], fx: 0,
+    look: { shirt: WHITE, pants: WHITE, team: 'K2B', trim: '#ff6fae', numColor: '#ff6fae', cap: '#ff8fc0', sleeve: '#ff8fc0', belt: '#ff8fc0', shoe: '#ff8fc0',
+            glove: '#f2a0c4', num: '0', nameEn: 'LUNA', scale: 0.76, headScale: 1.1, w: 0.92, hairStyle: 'pigtails', hair: '#3a2618' } },
+  { key: 'normal',  label: '普通', name: 'Glasnow',  mult: 1.3, types: ['直球', '變速球'], speeds: ['mid'], fx: 1,
+    look: { ...DODGER, shirt: WHITE, pants: WHITE, glove: '#1a1a1a', num: '31', nameEn: 'GLASNOW', scale: 1.1, w: 0.84, h: 1.12, hairStyle: 'long', hair: '#6b4a2e' } },
+  { key: 'hard',    label: '困難', name: 'Snell',    mult: 1.6, types: ['直球', '變速球', '曲球'], speeds: ['mid'], fx: 2,
+    look: { ...DODGER, shirt: GRAY, pants: GRAY, glove: '#1a1a1a', num: '7', nameEn: 'SNELL', scale: 1.07, w: 1.12, h: 1.06, beard: 'mustache', goatee: true, hair: '#2a1d16', lefty: true } },
+  { key: 'extreme', label: '極難', name: 'Otani',    mult: 2.0, types: ['直球', '變速球', '曲球'], speeds: ['fast'], fx: 3,
+    look: { ...DODGER, shirt: WHITE, pants: WHITE, glove: '#a5582a', num: '17', nameEn: 'OTANI', scale: 1.1, w: 1.15, h: 1.1 } },
+  { key: 'hell',    label: '地獄', name: 'Yamamoto', mult: 2.5, types: ['直球', '變速球', '曲球'], speeds: ['slow', 'mid', 'fast'], fx: 4,
+    look: { ...DODGER, shirt: GRAY, pants: GRAY, glove: '#1e4fa3', num: '18', nameEn: 'YAMAMOTO', scale: 1.0, w: 1.0, h: 1.0 } },
 ];
 const MPH = { 直球: { slow: [78, 82], mid: [86, 90], fast: [94, 99] }, 變速球: { slow: [68, 72], mid: [76, 80], fast: [84, 88] }, 曲球: { slow: [62, 66], mid: [70, 74], fast: [78, 82] } };
 DIFFS.forEach(d => {
@@ -659,12 +688,18 @@ const P_RFOOT = [[0, [-0.15, 0.0, 0.05]], [1.5, [-0.15, 0.0, 0.05]], [1.72, [-0.
 const P_TURN  = [[0, [0]], [0.4, [0]], [0.9, [-1.25]], [1.3, [-1.1]], [PITCH_REL, [0.38]], [2.0, [0.55]], [2.4, [0.4]]];
 const P_LEAN  = [[0, [0]], [0.9, [-0.1]], [1.3, [-0.22]], [PITCH_REL, [0.45]], [1.85, [0.75]], [2.4, [0.4]]];
 const P_BODY  = [[0, [0, 0, 1]], [0.9, [0.1, 0, 1.08]], [1.35, [-0.14, 0.22, 1]], [PITCH_REL, [-0.18, 0.42, 0.9]], [1.8, [-0.18, 0.5, 1]], [2.4, [-0.06, 0.55, 1]]];
+const mx = (v, sx) => { v[0] *= sx; return v; };
 function setPitcher(t) {
-  pitcher.hands[0].position.set(...track(P_BALL, t));
-  pitcher.hands[1].position.set(...track(P_GLOVE, t));
-  pitcher.feet[1].position.set(...track(P_LFOOT, t));
-  pitcher.feet[0].position.set(...track(P_RFOOT, t));
-  pitcher.torso.rotation.set(track(P_LEAN, t)[0], track(P_TURN, t)[0], 0);
+  const sx = pitcher.lefty ? -1 : 1;   // a left-hander is the right-hander's motion mirrored
+  pitcher.hands[0].position.set(...mx(track(P_BALL, t).slice(), sx));
+  pitcher.hands[1].position.set(...mx(track(P_GLOVE, t).slice(), sx));
+  pitcher.feet[1].position.set(...mx(track(P_LFOOT, t).slice(), sx));
+  pitcher.feet[0].position.set(...mx(track(P_RFOOT, t).slice(), sx));
+  pitcher.torso.rotation.set(track(P_LEAN, t)[0], sx * track(P_TURN, t)[0], 0);
+  if (pitcher.cuffs) pitcher.hands.forEach((h, i) => {   // the undershirt sleeve shows just inside each hand
+    tmp.set(0, 0.62, 0).sub(h.position).normalize(); pitcher.cuffs[i].position.copy(h.position).addScaledVector(tmp, 0.19);
+    tmp2.copy(pitcher.cuffs[i].position).add(tmp); pitcher.cuffs[i].lookAt(tmp2);
+  });
   const [dy, dz, sy] = track(P_BODY, t);
   pitcher.g.position.set(0, 0.3 + dy, -18.4 + dz); pitcher.torso.scale.set(1, sy, 1);
   pitcher.head.rotation.set(0, -pitcher.torso.rotation.y * 0.6, 0);   // keeps looking at the plate
