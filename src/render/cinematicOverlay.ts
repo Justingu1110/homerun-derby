@@ -7,6 +7,7 @@
  * every frame and every style is computed from timestamps it set, so the layer
  * follows the same clock as the 3D scene (and a paused test clock).
  */
+import { metresToFeet } from '../core';
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const smooth = (v: number) => v * v * (3 - 2 * v);
@@ -58,7 +59,7 @@ export interface CinematicOverlay {
    * HOME RUN!! without cutting it off.
    */
   pop(text: string, atMs: number, small?: boolean, line?: 0 | 1): void;
-  /** Shows 飛距離 (counting up) from onMs until offMs. */
+  /** Shows 飛距離 in feet (counting up) from onMs until offMs. */
   distance(metres: number, onMs: number, offMs: number): void;
   /** Hides everything that is showing or scheduled. */
   clear(): void;
@@ -69,7 +70,7 @@ export function createCinematicOverlay(root: HTMLElement): CinematicOverlay {
   root.innerHTML =
     '<div class="cine-bar cine-bar-top"></div><div class="cine-bar cine-bar-bottom"></div>' +
     '<div class="cine-speed"></div><div class="cine-flash"></div><div class="cine-pop"></div><div class="cine-pop cine-pop-low"></div>' +
-    '<div class="cine-distance"><small>飛距離</small><b>0</b><span>m</span></div>' +
+    '<div class="cine-distance"><small>飛距離</small><b>0</b><span>ft</span></div>' +
     '<div class="cine-skip">點畫面跳過 ▶▶</div>';
   const q = (s: string) => root.querySelector<HTMLElement>(s)!;
   const bars = [q('.cine-bar-top'), q('.cine-bar-bottom')];
@@ -87,8 +88,8 @@ export function createCinematicOverlay(root: HTMLElement): CinematicOverlay {
   type Pop = { text: string; small: boolean; atMs: number } | null;
   let popping: Pop[] = [null, null];
   const shownText = ['', ''];
-  let distSpan: (Span & { metres: number }) | null = null;
-  let shownMetres = -1;
+  let distSpan: (Span & { feet: number }) | null = null;
+  let shownFeet = -1;
 
   const popStyle = (u: number, reduced: boolean) => {
     if (reduced) return { opacity: u < 0.8 ? 1 : 1 - (u - 0.8) / 0.2, scale: 1, rot: -3 };
@@ -117,7 +118,7 @@ export function createCinematicOverlay(root: HTMLElement): CinematicOverlay {
       popping[line] = { text, small, atMs };
     },
     distance(metres, onMs, offMs) {
-      distSpan = { metres, onMs, offMs };
+      distSpan = { feet: metresToFeet(metres), onMs, offMs };
     },
     clear() {
       bar = lines = hint = distSpan = null;
@@ -153,8 +154,8 @@ export function createCinematicOverlay(root: HTMLElement): CinematicOverlay {
       dist.style.opacity = d.toFixed(3);
       dist.style.transform = `translateY(${(10 * (1 - d)).toFixed(1)}px)`;
       if (distSpan && d > 0) {
-        const m = Math.round(distSpan.metres * easeOut(clamp01((now - distSpan.onMs) / LOOK.distanceCountMs)));
-        if (m !== shownMetres) distN.textContent = String((shownMetres = m));
+        const ft = Math.round(distSpan.feet * easeOut(clamp01((now - distSpan.onMs) / LOOK.distanceCountMs)));
+        if (ft !== shownFeet) distN.textContent = String((shownFeet = ft));
       }
 
       skip.style.opacity = fade(hint, now, 200).toFixed(3);

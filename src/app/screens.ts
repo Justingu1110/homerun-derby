@@ -1,5 +1,5 @@
 import { difficulty, type BestScore, type Difficulty, type RoundState } from '../core';
-import { formatMultiplier } from '../render/hud';
+import { formatDistance, formatMultiplier } from '../render/hud';
 import { keepTapsFromSwing } from './dom';
 
 /**
@@ -7,7 +7,7 @@ import { keepTapsFromSwing } from './dom';
  * They only show what the core reports; no rules here.
  */
 export interface Screens {
-  /** 標題: the 最高分 (with the 難度 and 投手 it was set on) and the chosen 難度. */
+  /** 標題: the 最高分 (with the 難度 and 投手 it was set on, and its 總飛距離) and the chosen 難度. */
   showTitle(best: BestScore | null, chosen: Difficulty): void;
   showResult(state: RoundState): void;
   /** The 設定 screen; its contents are filled by mountSettingsScreen(settingsPanel). */
@@ -25,8 +25,6 @@ export interface ScreenActions {
   difficulty(): void;
   settings(): void;
 }
-
-const metres = (m: number) => `${Math.round(m)} m`;
 
 export function createScreens(root: HTMLElement, actions: ScreenActions): Screens {
   root.innerHTML = `
@@ -83,7 +81,8 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
       bestEl.textContent = best ? String(best.score) : '—';
       bestEl.classList.toggle('is-empty', !best);
       const setOn = best?.difficulty ? difficulty(best.difficulty) : null;
-      field('best-note').textContent = setOn ? `${setOn.name}・投手 ${setOn.pitcher}` : '';
+      const note = [setOn ? `${setOn.name}・投手 ${setOn.pitcher}` : '', best ? `總飛距離 ${formatDistance(best.totalDistance)}` : ''];
+      field('best-note').textContent = note.filter(Boolean).join('　');
       field('chosen-difficulty').textContent = `${chosen.name}・${chosen.pitcher} ${formatMultiplier(chosen.multiplier)}`;
       show(title);
     },
@@ -92,8 +91,8 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
       field('record').hidden = !state.newBest;
       result.classList.toggle('is-record', state.newBest);
       field('home-runs').textContent = `${state.homeRuns} 支`;
-      field('total').textContent = metres(state.totalDistance);
-      field('longest').textContent = state.longest ? metres(state.longest.distance) : '—';
+      field('total').textContent = formatDistance(state.totalDistance);
+      field('longest').textContent = state.longest ? formatDistance(state.longest.distance) : '—';
       show(result);
     },
     settingsPanel: settings,

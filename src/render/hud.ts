@@ -1,4 +1,4 @@
-import type { OutKind, PitchResult, RoundState, TimingGrade } from '../core';
+import { metresToFeet, type OutKind, type PitchResult, type RoundState, type TimingGrade } from '../core';
 
 /** On-screen words for the core's results. Presentation only; no rules here. */
 export const TIMING_LABEL: Record<TimingGrade, string> = { perfect: 'Perfect', early: '太早', late: '太晚' };
@@ -17,6 +17,9 @@ export interface Hud {
   /** Top bar during 一局: 分數, 難度倍率, 出局 dots. null hides it. */
   showRound(state: RoundState | null): void;
 }
+
+/** 飛距離 as shown on screen: the core's metres in whole feet, e.g. 394 ft. */
+export const formatDistance = (metres: number) => `${metresToFeet(metres)} ft`;
 
 /** 難度倍率 as shown on screen, e.g. ×1.0, ×1.3. */
 export const formatMultiplier = (m: number) => `×${m.toFixed(1)}`;
@@ -46,7 +49,7 @@ export function createHud(root: HTMLElement): Hud {
     },
     showResult(r) {
       if (r.kind === 'homeRun') {
-        result.innerHTML = `全壘打！<span class="hud-distance">${Math.round(r.ball.distance)} m</span>`;
+        result.innerHTML = `全壘打！<span class="hud-distance">${formatDistance(r.ball.distance)}</span>`;
         result.dataset.kind = 'homeRun';
       } else {
         result.textContent = `出局・${OUT_LABEL[r.out]}`;
