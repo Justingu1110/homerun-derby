@@ -55,36 +55,36 @@ const towel = (segments: number) =>
   tag(new BoxGeometry(TOWEL.w, TOWEL.h, 0.02, 1, segments, 1).translate(HAND.rest[0], HAND.rest[1] - TOWEL.h / 2, HAND.rest[2] + 0.06), PART.towel);
 
 function nearGeometry(): BufferGeometry {
-  const eye = (sx: number) => sphere(0.035, 6, 4, PART.eyes, [sx * 0.08, HEAD.y + 0.02, 0.215], [0.8, 1.5, 0.5]);
+  const eye = (sx: number) => sphere(0.035, 5, 3, PART.eyes, [sx * 0.08, HEAD.y + 0.02, 0.215], [0.8, 1.5, 0.5]);
   const brim = tag(
-    new CylinderGeometry(0.17, 0.17, 0.025, 12, 1, false, -Math.PI / 2, Math.PI).translate(0, HEAD.y + 0.06, 0.1),
+    new CylinderGeometry(0.17, 0.17, 0.025, 8, 1, false, -Math.PI / 2, Math.PI).translate(0, HEAD.y + 0.06, 0.1),
     PART.brim,
   );
   return mergeGeometries([
-    sphere(BODY.r, 10, 7, PART.body, [0, BODY.y, 0], [1, 1.15, 0.85]),
-    sphere(HEAD.r, 12, 8, PART.head, [0, HEAD.y, 0]),
+    sphere(BODY.r, 8, 6, PART.body, [0, BODY.y, 0], [1, 1.15, 0.85]),
+    sphere(HEAD.r, 10, 7, PART.head, [0, HEAD.y, 0]),
     eye(-1),
     eye(1),
-    tag(new SphereGeometry(HEAD.r * 1.06, 12, 4, 0, Math.PI * 2, 0, Math.PI * 0.5).translate(0, HEAD.y + 0.02, -0.01), PART.top),
+    tag(new SphereGeometry(HEAD.r * 1.06, 10, 3, 0, Math.PI * 2, 0, Math.PI * 0.5).translate(0, HEAD.y + 0.02, -0.01), PART.top),
     brim,
-    sphere(HAND.r, 7, 5, PART.handL, [-HAND.rest[0], HAND.rest[1], HAND.rest[2]]),
-    sphere(HAND.r, 7, 5, PART.handR, HAND.rest),
-    towel(4),
+    sphere(HAND.r, 6, 4, PART.handL, [-HAND.rest[0], HAND.rest[1], HAND.rest[2]]),
+    sphere(HAND.r, 6, 4, PART.handR, HAND.rest),
+    towel(2),
   ]);
 }
 
 /** Far level: low-poly body and head (the top of the head takes the cap / hair colour), stub hands, flat towel. */
 function farGeometry(): BufferGeometry {
-  const head = sphere(HEAD.r, 6, 4, PART.head, [0, HEAD.y, 0]);
+  const head = sphere(HEAD.r, 5, 3, PART.head, [0, HEAD.y, 0]);
   const pos = head.getAttribute('position');
   const part = head.getAttribute('aPart') as BufferAttribute;
   for (let i = 0; i < pos.count; i++) if (pos.getY(i) > HEAD.y + 0.05) part.setX(i, PART.top);
   return mergeGeometries([
-    sphere(BODY.r, 6, 4, PART.body, [0, BODY.y, 0], [1, 1.15, 0.85]),
+    sphere(BODY.r, 5, 3, PART.body, [0, BODY.y, 0], [1, 1.15, 0.85]),
     head,
-    sphere(HAND.r * 1.3, 4, 2, PART.handL, [-HAND.rest[0], HAND.rest[1], HAND.rest[2]]),
-    sphere(HAND.r * 1.3, 4, 2, PART.handR, HAND.rest),
-    towel(2),
+    sphere(HAND.r * 1.3, 3, 2, PART.handL, [-HAND.rest[0], HAND.rest[1], HAND.rest[2]]),
+    sphere(HAND.r * 1.3, 3, 2, PART.handR, HAND.rest),
+    towel(1),
   ]);
 }
 

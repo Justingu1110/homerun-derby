@@ -18,7 +18,7 @@ export const CROWD = {
   /** The stands are cut into this many wedges (one LOD switch and one cull test each). */
   wedges: 13,
   /** A wedge is drawn with full detail while the camera is within this many metres of it. */
-  nearM: 30,
+  nearM: 22,
 } as const;
 
 const PALETTE = {
