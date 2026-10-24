@@ -12,10 +12,10 @@ export interface DifficultyScreen {
 
 /**
  * Fills the 選難度 screen: one card per 難度 with its 投手, 難度倍率 and 球種.
- * Tapping a card stores it and calls `picked` (back to the title). 返回 uses
+ * Tapping a card stores it and calls `picked` with its id (then the 投手登場). 返回 uses
  * data-action="title" (handled by screens.ts). The 難度 table is the game core's.
  */
-export function mountDifficultyScreen(section: HTMLElement, storage: DifficultyStorage, picked: () => void): DifficultyScreen {
+export function mountDifficultyScreen(section: HTMLElement, storage: DifficultyStorage, picked: (id: DifficultyId) => void): DifficultyScreen {
   section.innerHTML = `
     <h2 class="screen-heading">選難度</h2>
     <div class="difficulty-list">
@@ -44,7 +44,7 @@ export function mountDifficultyScreen(section: HTMLElement, storage: DifficultyS
     if (!id) return;
     storage.save(id as DifficultyId);
     refresh();
-    picked();
+    picked(id as DifficultyId);
   });
   refresh();
   return { refresh };

@@ -48,8 +48,9 @@ const difficultyStorage = localDifficultyStorage();
 // Screen flow: 標題 → 一局 → 結算 → (再玩一次 → 一局) | (回標題 → 標題); 標題 ⇄ 選難度, 標題 ⇄ 設定.
 const showTitle = () => {
   hud.showRound(null);
-  atBat.usePitcher(difficultyStorage.load());
-  screens.showTitle(readBestScore(storage), difficulty(difficultyStorage.load()));
+  const chosen = difficultyStorage.load();
+  atBat.usePitcher(chosen);
+  screens.showTitle(readBestScore(storage), difficulty(chosen));
 };
 const play = () => {
   screens.hide();
@@ -69,9 +70,9 @@ const screens = createScreens(screensRoot, {
 });
 mountSettingsScreen(screens.settingsPanel, settings);
 // After picking a 難度: the 投手登場 of its 投手, then back to the title.
-const difficultyScreen = mountDifficultyScreen(screens.difficultyPanel, difficultyStorage, () => {
+const difficultyScreen = mountDifficultyScreen(screens.difficultyPanel, difficultyStorage, (picked) => {
   screens.hide();
-  atBat.introduce(difficultyStorage.load(), performance.now(), showTitle);
+  atBat.introduce(picked, performance.now(), showTitle);
 });
 showTitle();
 
