@@ -1,11 +1,13 @@
 import { Mesh, MeshPhongMaterial, SphereGeometry, Vector3, type PerspectiveCamera, type Scene } from 'three';
-import type { BattedBall, HomeRun, Pitch, PitchResult, Round, RoundState } from '../core';
+import { difficulty, type BattedBall, type DifficultyId, type HomeRun, type Pitch, type PitchResult, type Round, type RoundState } from '../core';
 import { createCinematic } from './cinematic';
 import type { CinematicOverlay } from './cinematicOverlay';
 import { toWorld } from './coords';
 import { createFacilityView } from './facilities';
 import type { Hud } from './hud';
-import { CONTACT_POINT, createBatter, createPitcher } from './players';
+import { createPitcherLineup } from './pitchers';
+import { batterCamera, INTRO, introCamera, introSway, type IntroCard } from './pitcherIntro';
+import { CONTACT_POINT, createBatter } from './players';
 import { SWING_TO_CONTACT_MS, stanceTime, swingProgress, windupTime } from './poses';
 
 /**
@@ -52,6 +54,8 @@ const curveBreak = (p: number) => (p <= 1 ? CURVE_PEAK * p * (1 - p * p) : -2 * 
 
 type Phase =
   | { name: 'idle' }
+  /** 投手登場; `then` runs once when it ends or is skipped. */
+  | { name: 'intro'; startMs: number; then: (atMs: number) => void }
   | { name: 'waiting'; untilMs: number }
   | { name: 'pitch'; pitch: Pitch; startMs: number; swingAtMs: number | null; result: PitchResult | null; flight: Flight | null; nextAtMs: number };
 
@@ -65,8 +69,15 @@ interface Flight {
 }
 
 export interface AtBat {
-  /** Starts 一局 at nowMs. onOver runs once its last result has been shown. */
+  /**
+   * Starts 一局 at nowMs with its 難度's 投手: the 投手登場 first, then the pitches.
+   * onOver runs once its last result has been shown.
+   */
   play(round: Round, nowMs: number, onOver: (state: RoundState) => void): void;
+  /** Puts this 難度's 投手 (and effect) on the mound, e.g. behind the title screen. */
+  usePitcher(id: DifficultyId): void;
+  /** Puts this 難度's 投手 on the mound and plays the 投手登場 (a tap skips it); onDone runs when it ends. */
+  introduce(id: DifficultyId, nowMs: number, onDone?: () => void): void;
   /** Call every frame with performance.now(). */
   update(nowMs: number): void;
   /** A tap at this high-resolution timestamp (pointer event timeStamp). */
@@ -87,8 +98,18 @@ export interface AtBatEvents {
   impact?(result: HomeRun): void;
 }
 
-export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, overlay: CinematicOverlay, events: AtBatEvents = {}): AtBat {
-  const pitcher = createPitcher(scene);
+export function createAtBat(
+  scene: Scene,
+  camera: PerspectiveCamera,
+  hud: Hud,
+  overlay: CinematicOverlay,
+  events: AtBatEvents = {},
+  introCard: IntroCard | null = null,
+): AtBat {
+  // The current 難度's 投手; switching keeps this object, so the 全壘打演出 always sees the one on the mound.
+  const pitcher = createPitcherLineup(scene);
+  const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+  const reduced = () => !!reducedMotion?.matches;
   const batter = createBatter(scene);
   const facilities = createFacilityView(scene);
   const ball = new Mesh(new SphereGeometry(0.13, 12, 10), new MeshPhongMaterial({ color: '#ffffff', emissive: '#555555', shininess: 30 }));
@@ -105,8 +126,6 @@ export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, o
     },
   );
   let lastNowMs = -Infinity;
-  // The pitch leaves this pitcher's ball hand; the core's clock says when it gets to the plate.
-  const pitchDir = new Vector3().subVectors(CONTACT_POINT, pitcher.releasePoint);
   let phase: Phase = { name: 'idle' };
   let round: Round | null = null;
   let onRoundOver: ((state: RoundState) => void) | null = null;
@@ -117,7 +136,10 @@ export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, o
    * A 曲球 (dropM > 0) leaves the hand on a rising hump, then breaks down ever faster
    * into the contact point, and keeps falling past it.
    */
+  const pitchDir = new Vector3();
   const pitchPos = (pitch: Pitch, p: number, out: Vector3) => {
+    // From the current 投手's ball hand (a lefty's is on the other side); the core's clock says when it gets to the plate.
+    pitchDir.subVectors(CONTACT_POINT, pitcher.releasePoint);
     out.copy(pitcher.releasePoint).addScaledVector(pitchDir, p);
     if (p <= 1) out.y -= SHOW.pitchSag * Math.sin(Math.PI * p);
     out.y += pitch.dropM * curveBreak(p);
@@ -187,18 +209,45 @@ export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, o
     done?.(state);
   };
 
+  /** 投手登場 for the 投手 on the mound; then(atMs) when it ends or is skipped. */
+  const startIntro = (nowMs: number, then: (atMs: number) => void) => {
+    introCard?.show(difficulty(pitcher.current()));
+    phase = { name: 'intro', startMs: nowMs, then };
+  };
+  const endIntro = (atMs: number) => {
+    if (phase.name !== 'intro') return;
+    const { then } = phase;
+    introCard?.hide();
+    pitcher.root.rotation.y = 0;
+    batterCamera(camera);
+    phase = { name: 'idle' };
+    then(atMs);
+  };
+
   hud.hint(false);
 
   return {
     play(r, nowMs, onOver) {
       round = r;
       onRoundOver = onOver;
+      pitcher.use(r.state().difficulty);
       batter.setStance(0);
       hud.clear();
-      hud.hint(!swungOnce);
-      hud.showRound(r.state());
+      hud.hint(false);
+      hud.showRound(null);
       facilities.sync(r.state().smashed);
-      phase = { name: 'waiting', untilMs: nowMs + SHOW.firstPitchDelayMs };
+      startIntro(nowMs, (atMs) => {
+        hud.hint(!swungOnce);
+        hud.showRound(r.state());
+        phase = { name: 'waiting', untilMs: atMs + SHOW.firstPitchDelayMs };
+      });
+    },
+
+    usePitcher: (id) => pitcher.use(id),
+
+    introduce(id, nowMs, onDone) {
+      pitcher.use(id);
+      startIntro(nowMs, () => onDone?.());
     },
 
     debug() {
@@ -210,6 +259,8 @@ export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, o
     swing(atMs) {
       // A tap during the 全壘打演出 skips to the 飛距離 shot.
       if (cinematic.playing()) return cinematic.skip(Math.max(atMs, lastNowMs));
+      // A tap during the 投手登場 skips it.
+      if (phase.name === 'intro') return endIntro(Math.max(atMs, lastNowMs));
       if (phase.name !== 'pitch' || phase.result) return;
       // The core decides whether this tap still counts as a 揮棒 (null: the pitch has gone by).
       const result = round!.swing(atMs - phase.startMs);
@@ -226,7 +277,17 @@ export function createAtBat(scene: Scene, camera: PerspectiveCamera, hud: Hud, o
       // Cinematic first: its cues may start a 設施 impact that must be drawn as of `now`.
       cinematic.update(now);
       facilities.update(now);
-      if (phase.name === 'idle' || phase.name === 'waiting') {
+      pitcher.update(now, reduced());
+      if (phase.name === 'intro') {
+        const tS = (now - phase.startMs) / 1000;
+        if (tS >= INTRO.durS) endIntro(now);
+        else {
+          introCamera(camera, tS, reduced());
+          pitcher.root.rotation.y = introSway(tS, reduced());
+          if (tS >= INTRO.cardOffS) introCard?.hide();
+        }
+      }
+      if (phase.name === 'idle' || phase.name === 'waiting' || phase.name === 'intro') {
         pitcher.setWindup(0);
         pitcher.hand.getWorldPosition(ball.position);
         ball.visible = true;

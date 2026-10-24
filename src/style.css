@@ -733,3 +733,68 @@ body {
     transition: none;
   }
 }
+
+/* ── 投手登場: 難度, 投手 name, 倍率・球種 over the close-up (v6 #introCard) ── */
+.intro-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(11% + env(safe-area-inset-top));
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.intro-card.is-on {
+  opacity: 1;
+}
+
+.intro-level {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 4px;
+  background: #d6322b;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.3em;
+}
+
+.intro-name {
+  display: block;
+  margin-top: 8px;
+  font-size: clamp(34px, 11vw, 72px);
+  font-weight: 900;
+  font-synthesis: none;
+  color: #fff;
+  -webkit-text-stroke: 3px #2a0d00;
+  paint-order: stroke fill;
+  text-shadow: 0 5px 0 #2a0d00;
+}
+
+.intro-info {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffc83d;
+  text-shadow: 0 1px 4px #000;
+}
+
+.intro-skip {
+  position: fixed;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid #ffffff2e;
+  background: #0000008c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-card {
+    transition: none;
+  }
+}

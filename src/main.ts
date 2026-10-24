@@ -10,6 +10,7 @@ import { localBestScoreStorage } from './app/storage';
 import { createAtBat } from './render/atBat';
 import { createCinematicOverlay } from './render/cinematicOverlay';
 import { createHud } from './render/hud';
+import { createIntroCard } from './render/pitcherIntro';
 import { enablePlayerShadows } from './render/lighting';
 import { buildStadium } from './render/stadium';
 import { createView } from './render/view';
@@ -39,7 +40,7 @@ const atBat = createAtBat(view.scene, view.camera, hud, createCinematicOverlay(c
     feedback.play('smash');
     feedback.vibrate([70, 40, 140]);
   },
-});
+}, createIntroCard(cinematicRoot));
 enablePlayerShadows(view.renderer, view.scene);
 const storage = localBestScoreStorage();
 const difficultyStorage = localDifficultyStorage();
@@ -47,6 +48,7 @@ const difficultyStorage = localDifficultyStorage();
 // Screen flow: 標題 → 一局 → 結算 → (再玩一次 → 一局) | (回標題 → 標題); 標題 ⇄ 選難度, 標題 ⇄ 設定.
 const showTitle = () => {
   hud.showRound(null);
+  atBat.usePitcher(difficultyStorage.load());
   screens.showTitle(readBestScore(storage), difficulty(difficultyStorage.load()));
 };
 const play = () => {
@@ -66,7 +68,11 @@ const screens = createScreens(screensRoot, {
   },
 });
 mountSettingsScreen(screens.settingsPanel, settings);
-const difficultyScreen = mountDifficultyScreen(screens.difficultyPanel, difficultyStorage, showTitle);
+// After picking a 難度: the 投手登場 of its 投手, then back to the title.
+const difficultyScreen = mountDifficultyScreen(screens.difficultyPanel, difficultyStorage, () => {
+  screens.hide();
+  atBat.introduce(difficultyStorage.load(), performance.now(), showTitle);
+});
 showTitle();
 
 // Swing on any tap. event.timeStamp is a high-resolution time on the same clock
