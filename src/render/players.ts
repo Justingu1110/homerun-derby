@@ -1,4 +1,4 @@
-import { LatheGeometry, Mesh, MeshStandardMaterial, Vector2, type Object3D, type Scene, type Vector3 } from 'three';
+import { LatheGeometry, Mesh, MeshStandardMaterial, Object3D, Vector2, type Scene, type Vector3 } from 'three';
 import { makeAppearance, type Appearance } from '../core';
 import { buildCharacter } from './character';
 import { BAT_PROFILE, batterPose, pitcherPose, poseBatter, posePitcher, releasePoint } from './poses';
@@ -41,6 +41,15 @@ export interface Batter {
   setStance(t: number): void;
   /** Swing from the current stance: 0 = start, 0.4 = bat over the plate (contact), 1 = high finish. */
   setSwing(a: number): void;
+  /**
+   * 打者甩棒: false lets go of the bat, so setStance/setSwing stop posing it and
+   * the cinematic places `bat` itself; true puts it back in the hands.
+   */
+  holdBat(held: boolean): void;
+  /** The bat (a scene child). */
+  bat: Object3D;
+  /** Tilts the head up by `rad` on top of the current pose (the next setStance/setSwing clears it). */
+  lookUp(rad: number): void;
 }
 
 /** Right-handed batter in the box on the third-base side, facing the plate. */
@@ -51,10 +60,15 @@ export function createBatter(scene: Scene, look: Appearance = BATTER_LOOK): Batt
   const bat = new Mesh(batGeometry(), new MeshStandardMaterial({ color: BAT_COLOR, roughness: 0.45 }));
   bat.castShadow = true;
   scene.add(bat);
-  const rig = { ...f, bat };
+  // While the bat is let go, the pose goes to a stand-in and the real bat stays where it was put.
+  const holding = { ...f, bat };
+  const letGo = { ...f, bat: new Object3D() };
+  let held = true;
   let stanceT = 0;
+  let lastSwing: number | null = null;
   const apply = (swing: number | null) => {
-    poseBatter(rig, batterPose(stanceT, swing));
+    lastSwing = swing;
+    poseBatter(held ? holding : letGo, batterPose(stanceT, swing));
     f.syncCuffs();
   };
   const batter: Batter = {
@@ -63,6 +77,15 @@ export function createBatter(scene: Scene, look: Appearance = BATTER_LOOK): Batt
       apply(null);
     },
     setSwing: (a) => apply(a),
+    holdBat(h) {
+      if (h === held) return;
+      held = h;
+      if (held) apply(lastSwing);
+    },
+    bat,
+    lookUp(rad) {
+      f.head.rotation.x -= rad;
+    },
   };
   batter.setStance(0);
   return batter;
@@ -74,6 +97,13 @@ export interface Pitcher {
    * PITCH_END = end of the follow-through, PITCH_RESET = back in the set.
    */
   setWindup(t: number): void;
+  /**
+   * 投手回頭目送: turns the whole pitcher `u` (0..1) of the way to `heading` (yaw, rad;
+   * 0 = facing home, π = facing center field). A right-hander turns counter-clockwise
+   * seen from above, a left-hander the mirror way. Kept across setWindup (poses never
+   * touch the root's rotation); setTurn(0, 0) faces home again.
+   */
+  setTurn(u: number, heading: number): void;
   /** The throwing hand, to carry the ball until release. */
   hand: Object3D;
   /** Where this pitcher's ball hand is at PITCH_RELEASE (world): the pitch starts here. */
@@ -90,5 +120,9 @@ export function createPitcher(scene: Scene, look: Appearance = PITCHER_LOOK): Pi
     f.syncCuffs();
   };
   setWindup(0);
-  return { setWindup, hand: f.hands[0], releasePoint: releasePoint(look) };
+  const setTurn = (u: number, heading: number) => {
+    const ccw = ((heading % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    f.root.rotation.y = u * (look.lefty ? ccw - 2 * Math.PI : ccw);
+  };
+  return { setWindup, setTurn, hand: f.hands[0], releasePoint: releasePoint(look) };
 }
