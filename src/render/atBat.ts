@@ -277,6 +277,9 @@ export function createAtBat(scene: Scene, camera: Camera, hud: Hud, overlay: Cin
         if (passed) resolve(p, passed, p.startMs + p.pitch.swingDeadlineMs);
       }
 
+      // 球種 + 球速 label from the moment the pitch leaves the hand.
+      if (elapsed >= releaseMs) hud.showPitch(p.pitch);
+
       // Ball.
       ball.visible = true;
       const f = p.flight;

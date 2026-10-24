@@ -1,4 +1,4 @@
-import { metresToFeet, type OutKind, type PitchResult, type RoundState, type TimingGrade } from '../core';
+import { metresToFeet, PITCH_TYPE_NAME, type OutKind, type Pitch, type PitchResult, type RoundState, type TimingGrade } from '../core';
 
 /** On-screen words for the core's results. Presentation only; no rules here. */
 export const TIMING_LABEL: Record<TimingGrade, string> = { perfect: 'Perfect', early: '太早', late: '太晚' };
@@ -9,10 +9,13 @@ export interface Hud {
   showTiming(grade: TimingGrade): void;
   /** Shows 全壘打 + 飛距離, or the 出局 kind. */
   showResult(result: PitchResult): void;
+  /** 球種 + 球速 at the bottom right (「曲球 79 mph」) from release; null hides it. Repeating the same pitch is a no-op. */
+  showPitch(pitch: Pitch | null): void;
+  /** Clears the 時機評價, result and 球速 label (a new pitch, or the end of 一局). */
   clear(): void;
   /** Hint shown until the first swing. */
   hint(on: boolean): void;
-  /** While the 全壘打演出 plays, the HUD steps aside (it owns the screen). */
+  /** While the 全壘打演出 plays, the HUD steps aside (it owns the screen); the 球速 label is hidden for good. */
   cinematic(on: boolean): void;
   /** Top bar during 一局: 分數, 難度倍率, 出局 dots. null hides it. */
   showRound(state: RoundState | null): void;
@@ -28,7 +31,8 @@ export function createHud(root: HTMLElement): Hud {
   root.innerHTML =
     '<div class="hud-bar" hidden><div class="hud-score"><span class="hud-score-label">分數</span><span class="hud-score-value"></span></div>' +
     '<div class="hud-mult"></div><div class="hud-outs" aria-label="出局"></div></div>' +
-    '<div class="hud-timing"></div><div class="hud-result"></div><div class="hud-hint">點畫面任何地方揮棒</div>';
+    '<div class="hud-timing"></div><div class="hud-result"></div><div class="hud-hint">點畫面任何地方揮棒</div>' +
+    '<div class="hud-pitch"><span class="hud-pitch-type"></span><span class="hud-pitch-mph"></span><span class="hud-pitch-unit">mph</span></div>';
   const timing = root.querySelector<HTMLElement>('.hud-timing')!;
   const result = root.querySelector<HTMLElement>('.hud-result')!;
   const hintEl = root.querySelector<HTMLElement>('.hud-hint')!;
@@ -36,6 +40,19 @@ export function createHud(root: HTMLElement): Hud {
   const scoreEl = root.querySelector<HTMLElement>('.hud-score-value')!;
   const multEl = root.querySelector<HTMLElement>('.hud-mult')!;
   const outsEl = root.querySelector<HTMLElement>('.hud-outs')!;
+  const pitchEl = root.querySelector<HTMLElement>('.hud-pitch')!;
+  const pitchType = root.querySelector<HTMLElement>('.hud-pitch-type')!;
+  const pitchMph = root.querySelector<HTMLElement>('.hud-pitch-mph')!;
+  let labelled: Pitch | null = null;
+  const showPitch = (pitch: Pitch | null) => {
+    if (pitch === labelled) return;
+    labelled = pitch;
+    if (pitch) {
+      pitchType.textContent = PITCH_TYPE_NAME[pitch.type];
+      pitchMph.textContent = String(Math.round(pitch.mph));
+    }
+    pitchEl.classList.toggle('show', !!pitch);
+  };
   const pop = (el: HTMLElement) => {
     el.classList.remove('pop');
     void el.offsetWidth;
@@ -57,13 +74,16 @@ export function createHud(root: HTMLElement): Hud {
       }
       pop(result);
     },
+    showPitch,
     clear() {
+      showPitch(null);
       timing.textContent = '';
       result.textContent = '';
       timing.classList.remove('pop');
       result.classList.remove('pop');
     },
     cinematic(on) {
+      if (on) showPitch(null);
       root.classList.toggle('is-cinematic', on);
     },
     hint(on) {
