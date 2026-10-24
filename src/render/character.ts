@@ -85,22 +85,24 @@ function uniformTexture(look: Appearance): Texture {
   x.lineJoin = 'round';
   x.strokeStyle = '#ffffff';
 
+  // Only a band of the front shows between the chin and the pants (rows ~165–275),
+  // so the script sits high and the small number tucks under its tail.
   x.save();
-  x.translate(256, 235);
+  x.translate(256, 200);
   x.rotate(-0.12);
-  x.font = `italic 700 104px ${SCRIPT_FONT}`;
+  x.font = `italic 700 96px ${SCRIPT_FONT}`;
   x.lineWidth = 10;
   x.fillStyle = look.trim;
-  x.strokeText(look.team, 0, 0);
-  x.fillText(look.team, 0, 0);
-  x.fillRect(-150, 58, 290, 9);
+  x.strokeText(look.team, 0, 0, 340);
+  x.fillText(look.team, 0, 0, 340);
+  x.fillRect(-150, 46, 290, 8);
   x.restore();
 
-  x.font = `900 74px ${BLOCK_FONT}`;
-  x.lineWidth = 8;
+  x.font = `900 52px ${BLOCK_FONT}`;
+  x.lineWidth = 7;
   x.fillStyle = look.frontNumberColor;
-  x.strokeText(look.number, 330, 360);
-  x.fillText(look.number, 330, 360);
+  x.strokeText(look.number, 352, 262);
+  x.fillText(look.number, 352, 262);
 
   x.fillStyle = look.trim;
   if (look.nameOnBack) {
