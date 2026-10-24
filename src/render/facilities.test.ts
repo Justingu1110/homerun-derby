@@ -60,3 +60,12 @@ describe('FacilityView: impact effects do not pile up within a round', () => {
     expect(objectsIn(scene)).toBe(size);
   });
 });
+
+describe('FacilityView: a home run into the stands ends on the seat row it lands in', () => {
+  it('a 132 m home run at −9.9° rests on the 9th row (11 m up), not inside the steps', () => {
+    const view = createFacilityView(new Scene());
+    const p = view.impactPoint({ distance: 132, angle: -9.9 }, { kind: 'stands' });
+    expect(Math.hypot(p.x, p.z)).toBeCloseTo(132, 5);
+    expect(p.y).toBeCloseTo(11 + 0.13, 5);
+  });
+});

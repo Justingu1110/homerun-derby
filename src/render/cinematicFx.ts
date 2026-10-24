@@ -4,7 +4,6 @@ import {
   BufferGeometry,
   CanvasTexture,
   Color,
-  InstancedMesh,
   Mesh,
   MeshBasicMaterial,
   Points,
@@ -17,6 +16,7 @@ import {
 } from 'three';
 import { FIELD } from '../core';
 import { seededRandom } from './coords';
+import { crowdUniforms } from './crowd';
 import { STANDS, standsHeight } from './stadium';
 
 /**
@@ -137,8 +137,8 @@ export function createBursts(scene: Scene): Bursts {
 
 // ── Crowd ───────────────────────────────────────────────────────────────────
 
-/** Jump height (m) and rate (rad/s) of a cheering spectator. */
-const CHEER = { jump: 0.6, rate: 11, decayPerS: 0.8 } as const;
+/** After the cheer's end the crowd calms down at this rate (1/s). */
+const CHEER = { decayPerS: 0.8 } as const;
 
 export interface Crowd {
   /** Cheering at full strength from startMs until endMs, then dying down. */
@@ -146,16 +146,14 @@ export interface Crowd {
   update(nowMs: number): void;
 }
 
-/** Makes the stadium's InstancedMesh crowd (named 'crowd') jump. */
+/**
+ * Drives the stadium crowd (named 'crowd'): only the shader's clock and cheer
+ * strength change per frame; the fans' sway, jumps and raised hands are computed on the GPU.
+ */
 export function createCrowd(scene: Scene): Crowd {
-  const mesh = scene.getObjectByName('crowd');
-  if (!(mesh instanceof InstancedMesh)) return { cheer() {}, update() {} };
-  const matrices = mesh.instanceMatrix.array as Float32Array;
-  const baseY = Float32Array.from({ length: mesh.count }, (_, i) => matrices[i * 16 + 13]);
-  const rand = seededRandom(1111);
-  const phase = Float32Array.from({ length: mesh.count }, () => rand() * Math.PI * 2);
+  const uniforms = crowdUniforms(scene.getObjectByName('crowd'));
+  if (!uniforms) return { cheer() {}, update() {} };
   let span = { startMs: Infinity, endMs: Infinity };
-  let resting = true;
   return {
     cheer(startMs, endMs) {
       span = { startMs, endMs };
@@ -163,14 +161,8 @@ export function createCrowd(scene: Scene): Crowd {
     update(now) {
       const after = (now - span.endMs) / 1000;
       const strength = now < span.startMs ? 0 : after <= 0 ? 1 : Math.exp(-CHEER.decayPerS * after);
-      if (strength < 0.01) {
-        if (resting) return;
-        resting = true;
-      } else resting = false;
-      const amp = resting ? 0 : CHEER.jump * strength;
-      const s = now / 1000;
-      for (let i = 0; i < mesh.count; i++) matrices[i * 16 + 13] = baseY[i] + Math.max(0, Math.sin(s * CHEER.rate + phase[i])) * amp;
-      mesh.instanceMatrix.needsUpdate = true;
+      uniforms.uTime.value = now / 1000;
+      uniforms.uCheer.value = strength < 0.01 ? 0 : strength;
     },
   };
 }

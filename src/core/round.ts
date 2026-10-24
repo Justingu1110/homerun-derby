@@ -1,8 +1,8 @@
 import { recordIfBest, type BestScoreStorage } from './bestScore';
-import { difficultyMultiplier, homeRunPoints } from './difficulty';
+import { difficulty as difficultyOf, homeRunPoints, type Difficulty, type DifficultyId } from './difficulty';
 import { FIELD } from './field';
 import { createFacilities, type Landing } from './facilities';
-import { DEFAULT_PITCH_SETTINGS, type PitchSettings, type PitchType } from './pitchSettings';
+import type { PitchType, SpeedLevel } from './pitch';
 import { TUNING } from './tuning';
 
 /** Injected random source: returns a number in [0, 1), like Math.random. */
@@ -12,8 +12,8 @@ export interface RoundOptions {
   random: RandomSource;
   /** Where the 最高分 is read and written when the round ends. Optional: without it nothing is stored. */
   storage?: BestScoreStorage;
-  /** 投球設定 of this round. Optional: defaults to DEFAULT_PITCH_SETTINGS (直球, 中速). */
-  pitchSettings?: PitchSettings;
+  /** 難度 of this round: decides the 球種, 球速 levels and 難度倍率. */
+  difficulty: DifficultyId;
   /**
    * 隨機幅度, 0–1 (the 設定 slider's 0–100%). Jitters the 飛距離 and direction of
    * a ball the bat touched outside the perfect window. Default DEFAULT_RANDOMNESS.
@@ -21,12 +21,15 @@ export interface RoundOptions {
   randomness?: number;
 }
 
-export type { PitchType };
+export type { PitchType, SpeedLevel };
 
 /** One pitch, as the renderer needs it. Times are ms from the start of the pitch. */
 export interface Pitch {
   type: PitchType;
-  speedKmh: number;
+  /** 球速 level this pitch was drawn from (慢／中／快). */
+  speed: SpeedLevel;
+  /** 球速 in mph, for the screen; the flight time follows from it. Not rounded. */
+  mph: number;
   /** When the ball leaves the pitcher's hand (end of the windup). */
   releaseMs: number;
   /** Release → plate flight time. */
@@ -87,6 +90,8 @@ export interface RoundState {
   over: boolean;
   /** 分數: each 全壘打 scores 100 × multiplier. */
   score: number;
+  /** 難度 of this round (it decides the 投手). */
+  difficulty: DifficultyId;
   /** 難度倍率 of this round. */
   multiplier: number;
   /** 全壘打 so far. */
@@ -120,11 +125,11 @@ export interface Round {
 }
 
 export function startRound(options: RoundOptions): Round {
-  const { random, storage, pitchSettings = DEFAULT_PITCH_SETTINGS, randomness = TUNING.randomness.default } = options;
+  const { random, storage, randomness = TUNING.randomness.default } = options;
+  const difficulty = difficultyOf(options.difficulty);
   if (!(randomness >= 0 && randomness <= 1)) throw new RangeError(`randomness must be 0–1, got ${randomness}`);
   let current: Pitch | null = null;
-  if (pitchSettings.types.length === 0) throw new Error('投球設定 needs at least one 球種');
-  const multiplier = difficultyMultiplier(pitchSettings);
+  const { multiplier } = difficulty;
   let outs = 0;
   let score = 0;
   let homeRuns = 0;
@@ -147,17 +152,17 @@ export function startRound(options: RoundOptions): Round {
       totalDistance += result.ball.distance;
       if (!longest || result.ball.distance > longest.distance) longest = result.ball;
     }
-    if (isOver()) newBest = recordIfBest(storage, { score, totalDistance, pitchSettings });
+    if (isOver()) newBest = recordIfBest(storage, { score, totalDistance, difficulty: difficulty.id });
     return result;
   };
   const isOver = () => outs >= TUNING.round.maxOuts;
   return {
     state() {
-      return { outs, maxOuts: TUNING.round.maxOuts, over: isOver(), score, multiplier, homeRuns, totalDistance, longest, newBest, smashed: facilities.smashed() };
+      return { outs, maxOuts: TUNING.round.maxOuts, over: isOver(), score, difficulty: difficulty.id, multiplier, homeRuns, totalDistance, longest, newBest, smashed: facilities.smashed() };
     },
     nextPitch() {
       if (isOver()) throw new Error('The round is over');
-      current = throwPitch(pitchSettings, random);
+      current = throwPitch(difficulty, random);
       return current;
     },
     swing(elapsedMs) {
@@ -176,18 +181,25 @@ export function startRound(options: RoundOptions): Round {
   };
 }
 
-/** Picks one of the checked 球種 and a speed inside its range. Every 球種 has the same windup. */
-function throwPitch(settings: PitchSettings, random: RandomSource): Pitch {
-  const { windupMs, flightDistance, speedKmh: ranges, curveDropM } = TUNING.pitch;
-  const { types } = settings;
-  const type = types[Math.min(types.length - 1, Math.floor(random() * types.length))];
-  const range = ranges[type][settings.speed];
-  const speedKmh = range.min + (range.max - range.min) * random();
-  const flightMs = (flightDistance / (speedKmh / 3.6)) * 1000;
+const METRES_PER_SECOND_PER_MPH = 0.44704;
+
+/** Picks one of the 難度's 球種, then one of its 球速 levels, then a speed inside that range. Every 球種 has the same windup. */
+function throwPitch(difficulty: Difficulty, random: RandomSource): Pitch {
+  const { windupMs, flightDistance, speedMph: ranges, curveDropM } = TUNING.pitch;
+  const type = pick(difficulty.types, random);
+  const speed = pick(difficulty.speeds, random);
+  const range = ranges[type][speed];
+  const mph = range.min + (range.max - range.min) * random();
+  const flightMs = (flightDistance / (mph * METRES_PER_SECOND_PER_MPH)) * 1000;
   const contactMs = windupMs + flightMs;
   const swingDeadlineMs = contactMs + TUNING.swing.contactWindowMs + TUNING.swing.deadlineGraceMs;
   const dropM = type === 'curveball' ? curveDropM : 0;
-  return { type, speedKmh, releaseMs: windupMs, flightMs, contactMs, swingDeadlineMs, dropM };
+  return { type, speed, mph, releaseMs: windupMs, flightMs, contactMs, swingDeadlineMs, dropM };
+}
+
+/** One item of a non-empty list, uniformly. Always draws once from `random`. */
+function pick<T>(items: readonly T[], random: RandomSource): T {
+  return items[Math.min(items.length - 1, Math.floor(random() * items.length))];
 }
 
 function judgeSwing(timingErrorMs: number, randomness: number, random: RandomSource): Out | Omit<HomeRun, 'landing' | 'cinematic'> {

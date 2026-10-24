@@ -333,6 +333,92 @@ body {
   }
 }
 
+/* The 難度 and 投手 of the 最高分, in small print under it on the title. */
+.title-best-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+/* The chosen 難度, in small print inside the 選難度 button. */
+.btn-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+/* ── 選難度 screen ────────────────────────────────────────────────────── */
+
+.screen-difficulty {
+  gap: 14px;
+}
+
+.difficulty-list {
+  display: grid;
+  gap: 8px;
+  width: min(340px, 100%);
+}
+
+.difficulty-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 14px;
+  font: inherit;
+  color: #fff;
+  text-align: left;
+  background: #0e1330cc;
+  box-shadow: inset 0 0 0 2px #ffffff2e;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.difficulty-card[aria-pressed='true'] {
+  color: #1b1124;
+  background: #ffd400;
+  box-shadow: 0 4px 0 #a87f00;
+}
+
+.difficulty-card:active {
+  transform: translateY(2px);
+}
+
+.difficulty-card:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+.difficulty-name {
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.difficulty-mult {
+  font-size: 22px;
+  font-weight: 900;
+  color: #ffd400;
+  font-variant-numeric: tabular-nums;
+}
+
+.difficulty-card[aria-pressed='true'] .difficulty-mult {
+  color: #1b1124;
+}
+
+.difficulty-pitcher,
+.difficulty-pitches {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
 /* ── 設定 screen ──────────────────────────────────────────────────────── */
 
 .screen-heading {
@@ -597,4 +683,118 @@ body {
 #hud.is-cinematic .hud-result,
 #hud.is-cinematic .hud-hint {
   visibility: hidden;
+}
+
+/* ── 球速 label: 球種 + mph at the bottom right from release (v6 #pitchInfo) ── */
+.hud-pitch {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(8, 10, 28, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.hud-pitch.show {
+  opacity: 1;
+  transform: none;
+}
+
+.hud-pitch-type {
+  font-size: 15px;
+}
+
+.hud-pitch-mph {
+  font-size: 26px;
+  color: #ffc83d;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-pitch-unit {
+  font-size: 12px;
+  color: #b8bfe3;
+}
+
+#hud.is-cinematic .hud-pitch {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-pitch {
+    transition: none;
+  }
+}
+
+/* ── 投手登場: 難度, 投手 name, 倍率・球種 over the close-up (v6 #introCard) ── */
+.intro-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(11% + env(safe-area-inset-top));
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.intro-card.is-on {
+  opacity: 1;
+}
+
+.intro-level {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 4px;
+  background: #d6322b;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.3em;
+}
+
+.intro-name {
+  display: block;
+  margin-top: 8px;
+  font-size: clamp(34px, 11vw, 72px);
+  font-weight: 900;
+  font-synthesis: none;
+  color: #fff;
+  -webkit-text-stroke: 3px #2a0d00;
+  paint-order: stroke fill;
+  text-shadow: 0 5px 0 #2a0d00;
+}
+
+.intro-info {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffc83d;
+  text-shadow: 0 1px 4px #000;
+}
+
+.intro-skip {
+  position: fixed;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid #ffffff2e;
+  background: #0000008c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-card {
+    transition: none;
+  }
 }

@@ -1,19 +1,13 @@
-import { CylinderGeometry, Mesh, Vector3, type Object3D, type Scene } from 'three';
+import { LatheGeometry, Mesh, MeshStandardMaterial, Object3D, Vector2, type Scene, type Vector3 } from 'three';
 import { makeAppearance, type Appearance } from '../core';
-import { buildCharacter, inked, toon } from './character';
+import { buildCharacter } from './character';
+import { BAT_PROFILE, batterPose, pitcherPose, poseBatter, posePitcher, releasePoint } from './poses';
 
 /**
  * The batter and the pitcher: pawapuro-style characters (see character.ts)
- * plus their poses. Every pose is a pure function of one progress number, so
- * the at-bat can drive them from the pitch clock.
+ * posed from the keyframe tables in poses.ts. Every pose is a pure function of
+ * one time number, so the at-bat can drive them from the pitch clock.
  */
-
-const DEG = Math.PI / 180;
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
-const smooth = (v: number) => v * v * (3 - 2 * v);
-const easeIn = (v: number) => v * v;
-const easeOut = (v: number) => 1 - (1 - v) * (1 - v);
-const lerp = (a: number, b: number, u: number) => a + (b - a) * u;
 
 /** Default looks: home batter in whites with a red helmet, visiting pitcher in blue. */
 export const BATTER_LOOK = makeAppearance();
@@ -24,140 +18,113 @@ export const PITCHER_LOOK = makeAppearance({
   trim: '#ffffff',
   glove: '#8b5a2b',
   number: '18',
+  sleeve: '#1b2f78',
+  belt: '#1b2f78',
+  shoe: '#2a4fb8',
+  team: 'Stars',
+  frontNumberColor: '#ffffff',
+  nameOnBack: 'ACE',
 });
 
-/** Where the bat meets an on-time pitch, in world space. */
-export const CONTACT_POINT = new Vector3();
-/** Where the ball leaves the pitcher's hand, in world space. */
-export const RELEASE_POINT = new Vector3(-0.3, 1.65, -17.85);
+export { CONTACT_POINT } from './poses';
 
-const HANDS = new Vector3(-0.53, 0.82, 0.2);
-const UP = new Vector3(0, 1, 0);
-const BAT_LENGTH = 1.0;
-const BAT_COLOR = '#d9a55b';
+const BAT_COLOR = '#e8cf9a';
 
-function batDir(yawDeg: number, elevDeg: number, out: Vector3): Vector3 {
-  const y = yawDeg * DEG;
-  const e = elevDeg * DEG;
-  return out.set(Math.sin(y) * Math.cos(e), Math.sin(e), Math.cos(y) * Math.cos(e));
-}
-CONTACT_POINT.copy(HANDS).addScaledVector(batDir(90, 5, new Vector3()), 0.72);
+/** A turned bat: knob, thin handle, swelling to a thick barrel, rounded end. Origin at the knob, along +y. */
+const batGeometry = () => new LatheGeometry(BAT_PROFILE.map(([r, y]) => new Vector2(r, y)), 24);
 
 export interface Batter {
-  /** 0 = stance, 0.4 = bat over the plate (contact), 1 = follow-through. */
+  /**
+   * Stance at motion time t (poses.ts stanceTime): 0 = waggle, load from 0.7,
+   * stride planted at STANCE_END. Clears any swing.
+   */
+  setStance(t: number): void;
+  /** Swing from the current stance: 0 = start, 0.4 = bat over the plate (contact), 1 = high finish. */
   setSwing(a: number): void;
-  /** Front-foot stride: 0 = stance, 0.5 = foot up, 1 = planted toward the pitcher. */
-  setStride(u: number): void;
+  /**
+   * 打者甩棒: false lets go of the bat, so setStance/setSwing stop posing it and
+   * the cinematic places `bat` itself; true puts it back in the hands.
+   */
+  holdBat(held: boolean): void;
+  /** The bat (a scene child). */
+  bat: Object3D;
+  /** Tilts the head up by `rad` on top of the current pose (the next setStance/setSwing clears it). */
+  lookUp(rad: number): void;
 }
 
 /** Right-handed batter in the box on the third-base side, facing the plate. */
 export function createBatter(scene: Scene, look: Appearance = BATTER_LOOK): Batter {
   // Facing +x world puts the character's left (+x local) toward the pitcher: the ear flap goes there.
   const f = buildCharacter(look, { headgear: 'helmet', flapSide: 1 });
-  f.root.position.set(-0.75, 0, 0.2);
-  f.root.rotation.y = Math.PI / 2;
   scene.add(f.root, ...f.hands);
-  const batGeo = new CylinderGeometry(0.055, 0.028, BAT_LENGTH, 12);
-  batGeo.translate(0, BAT_LENGTH / 2, 0);
-  const bat = inked(new Mesh(batGeo, toon(BAT_COLOR)), 0.012);
+  const bat = new Mesh(batGeometry(), new MeshStandardMaterial({ color: BAT_COLOR, roughness: 0.45 }));
+  bat.castShadow = true;
   scene.add(bat);
-  const dir = new Vector3();
-  const [, front] = f.feet;
-  const frontHome = front.position.clone();
-
-  const setSwing = (a: number) => {
-    let yaw: number;
-    let elev: number;
-    if (a <= 0.4) {
-      const u = easeIn(a / 0.4);
-      yaw = -15 + 105 * u;
-      elev = 62 - 57 * u;
-    } else {
-      const u = easeOut((a - 0.4) / 0.6);
-      yaw = 90 + 175 * u;
-      elev = 5 + 40 * u;
-    }
-    batDir(yaw, elev, dir);
-    bat.position.copy(HANDS);
-    bat.quaternion.setFromUnitVectors(UP, dir);
-    f.hands[0].position.copy(HANDS).addScaledVector(dir, 0.04);
-    f.hands[1].position.copy(HANDS).addScaledVector(dir, 0.16);
-    // Hips turn through contact; a small lean into the ball, then back up on the follow-through.
-    f.torso.rotation.y = 0.9 * smooth(clamp01(a / 0.55));
-    f.torso.rotation.z = -0.12 * Math.sin(Math.PI * clamp01(a / 0.8));
+  // While the bat is let go, the pose goes to a stand-in and the real bat stays where it was put.
+  const holding = { ...f, bat };
+  const letGo = { ...f, bat: new Object3D() };
+  let held = true;
+  let stanceT = 0;
+  let lastSwing: number | null = null;
+  const apply = (swing: number | null) => {
+    lastSwing = swing;
+    poseBatter(held ? holding : letGo, batterPose(stanceT, swing));
+    f.syncCuffs();
   };
-
-  const setStride = (u: number) => {
-    const s = clamp01(u);
-    front.position.set(frontHome.x + 0.14 * smooth(s), frontHome.y + 0.12 * Math.sin(Math.PI * s), frontHome.z);
-    // Weight shifts back while the foot is up (load), then forward as it lands.
-    f.torso.position.x = 0.05 * smooth(s) - 0.05 * Math.sin(Math.PI * s);
+  const batter: Batter = {
+    setStance(t) {
+      stanceT = t;
+      apply(null);
+    },
+    setSwing: (a) => apply(a),
+    holdBat(h) {
+      if (h === held) return;
+      held = h;
+      if (held) apply(lastSwing);
+    },
+    bat,
+    lookUp(rad) {
+      f.head.rotation.x -= rad;
+    },
   };
-
-  setSwing(0);
-  setStride(0);
-  return { setSwing, setStride };
+  batter.setStance(0);
+  return batter;
 }
 
 export interface Pitcher {
-  /** Windup progress: 0 = set, 0.85 = release, 1.2 = follow-through. */
+  /**
+   * Motion time (poses.ts): 0 = set, PITCH_RELEASE = ball leaves the hand,
+   * PITCH_END = end of the follow-through, PITCH_RESET = back in the set.
+   */
   setWindup(t: number): void;
+  /**
+   * 投手回頭目送: turns the whole pitcher `u` (0..1) of the way to `heading` (yaw, rad;
+   * 0 = facing home, π = facing center field). A right-hander turns counter-clockwise
+   * seen from above, a left-hander the mirror way. Kept across setWindup (poses never
+   * touch the root's rotation); setTurn(0, 0) faces home again.
+   */
+  setTurn(u: number, heading: number): void;
   /** The throwing hand, to carry the ball until release. */
   hand: Object3D;
+  /** Where this pitcher's ball hand is at PITCH_RELEASE (world): the pitch starts here. */
+  releasePoint: Readonly<Vector3>;
+  /** The whole figure (hands included), e.g. to hide it. setTurn owns root.rotation.y. */
+  root: Object3D;
 }
 
-type Key = [t: number, x: number, y: number, z: number];
-
-/** Throwing hand (pitcher-local): set at the chest, up, back behind the head, release in front, down across. */
-const BALL_HAND: Key[] = [
-  [0, -0.04, 0.78, 0.3],
-  [0.35, 0, 1.0, 0.15],
-  [0.7, -0.38, 1.25, -0.45],
-  [0.85, -0.3, 1.35, 0.55],
-  [1.2, 0.2, 0.55, 0.65],
-];
-/** Glove hand: with the ball at the set, reaches toward the plate on the stride, tucks in at release. */
-const GLOVE_HAND: Key[] = [
-  [0, 0.18, 0.8, 0.32],
-  [0.35, 0.1, 1.0, 0.2],
-  [0.65, 0.42, 0.95, 0.45],
-  [0.85, 0.32, 0.75, 0.2],
-  [1.2, 0.28, 0.7, 0.3],
-];
-
-function track(keys: Key[], t: number, out: Vector3): Vector3 {
-  let i = 0;
-  while (i < keys.length - 2 && t > keys[i + 1][0]) i++;
-  const a = keys[i];
-  const b = keys[i + 1];
-  const u = smooth(clamp01((t - a[0]) / (b[0] - a[0])));
-  return out.set(lerp(a[1], b[1], u), lerp(a[2], b[2], u), lerp(a[3], b[3], u));
-}
-
-/** Right-handed pitcher on the mound, facing the plate (+z). */
+/** Pitcher on the mound, facing the plate (+z). A left-hander (look.lefty) is the right-hander's motion mirrored. */
 export function createPitcher(scene: Scene, look: Appearance = PITCHER_LOOK): Pitcher {
-  const f = buildCharacter(look, { headgear: 'cap', bareHand: true });
-  f.root.position.set(0, 0.3, -18.4);
+  const f = buildCharacter(look, { headgear: 'cap', mitt: true });
   f.root.add(...f.hands);
   scene.add(f.root);
-  const [pivot, lead] = f.feet;
-  const leadHome = lead.position.clone();
-  const pivotHome = pivot.position.clone();
-
   const setWindup = (t: number) => {
-    track(BALL_HAND, t, f.hands[0].position);
-    track(GLOVE_HAND, t, f.hands[1].position);
-    // Lean back through the windup, then drive forward over the front leg.
-    f.torso.rotation.x = t < 0.7 ? -0.25 * smooth(clamp01(t / 0.7)) : -0.25 + 0.6 * smooth(clamp01((t - 0.7) / 0.3));
-    // Coil (turn the back to the batter a little) on the leg kick, uncoil on the throw.
-    f.torso.rotation.y = -0.5 * Math.sin(Math.PI * clamp01((t - 0.2) / 0.62));
-    // Leg kick with the lead (glove-side) leg, then a stride toward the plate.
-    const kick = clamp01((t - 0.3) / 0.55);
-    lead.position.set(leadHome.x, leadHome.y + 0.38 * Math.sin(Math.PI * kick), leadHome.z + 0.35 * smooth(kick));
-    // The pivot foot drags forward on the follow-through.
-    const drag = clamp01((t - 0.85) / 0.35);
-    pivot.position.set(pivotHome.x + 0.08 * drag, pivotHome.y + 0.08 * Math.sin(Math.PI * drag), pivotHome.z + 0.2 * smooth(drag));
+    posePitcher(f, pitcherPose(t, look.lefty));
+    f.syncCuffs();
   };
   setWindup(0);
-  return { setWindup, hand: f.hands[0] };
+  const setTurn = (u: number, heading: number) => {
+    const ccw = ((heading % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    f.root.rotation.y = u * (look.lefty ? ccw - 2 * Math.PI : ccw);
+  };
+  return { setWindup, setTurn, hand: f.hands[0], releasePoint: releasePoint(look), root: f.root };
 }

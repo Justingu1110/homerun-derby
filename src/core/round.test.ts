@@ -5,14 +5,14 @@ const fixed = (v: number) => () => v;
 
 describe('one pitch: pitch → swing → result', () => {
   it('a tap at the ideal contact moment (ms from the start of the pitch) is a Perfect home run', () => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), difficulty: 'easy' });
     const pitch = round.nextPitch();
     expect(round.swing(pitch.contactMs)!).toMatchObject({ kind: 'homeRun', timing: 'perfect' });
   });
 
   it('a swing inside the perfect window is always a home run', () => {
     for (const err of [-8, 0, 8]) {
-      const round = startRound({ random: fixed(0.5) });
+      const round = startRound({ random: fixed(0.5), difficulty: 'easy' });
       const pitch = round.nextPitch();
       const result = round.swing(pitch.contactMs + err)!;
       expect(result.kind).toBe('homeRun');
@@ -23,7 +23,7 @@ describe('one pitch: pitch → swing → result', () => {
 
 describe('direction follows timing', () => {
   const hit = (err: number) => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), difficulty: 'easy' });
     const pitch = round.nextPitch();
     return round.swing(pitch.contactMs + err)!;
   };
@@ -47,7 +47,7 @@ describe('direction follows timing', () => {
 
 describe('outs', () => {
   const swingAt = (err: number) => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), difficulty: 'easy' });
     const pitch = round.nextPitch();
     return round.swing(pitch.contactMs + err)!;
   };
@@ -71,7 +71,7 @@ describe('outs', () => {
   });
 
   it('letting the pitch go by without swinging is an out (沒揮棒) once the swing deadline has passed', () => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), difficulty: 'easy' });
     const pitch = round.nextPitch();
     expect(round.tick(pitch.contactMs)).toBeNull();
     expect(round.tick(pitch.swingDeadlineMs)).toBeNull();
@@ -80,7 +80,7 @@ describe('outs', () => {
   });
 
   it('a tap that was ignored after the deadline still ends in 沒揮棒', () => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), difficulty: 'easy' });
     const pitch = round.nextPitch();
     round.swing(pitch.swingDeadlineMs + 5);
     expect(round.tick(pitch.swingDeadlineMs + 10)).toMatchObject({ kind: 'out', out: 'noSwing' });
@@ -96,7 +96,7 @@ describe('outs', () => {
 
 describe('distance follows timing', () => {
   const distanceAt = (err: number) => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), difficulty: 'easy' });
     const pitch = round.nextPitch();
     return round.swing(pitch.contactMs + err)!.ball!.distance;
   };
@@ -109,7 +109,7 @@ describe('distance follows timing', () => {
 
   it('every home run clears the wall', () => {
     for (let err = -130; err <= 130; err += 1) {
-      const round = startRound({ random: fixed(0.5) });
+      const round = startRound({ random: fixed(0.5), difficulty: 'easy' });
       const pitch = round.nextPitch();
       const result = round.swing(pitch.contactMs + err)!;
       if (result.kind === 'homeRun') expect(result.ball.distance).toBeGreaterThanOrEqual(FIELD.fenceDistance);
@@ -119,22 +119,22 @@ describe('distance follows timing', () => {
 
 describe('pitches', () => {
   it('draws its pitch from the injected random source', () => {
-    const slow = startRound({ random: fixed(0) }).nextPitch();
-    const fast = startRound({ random: fixed(0.999) }).nextPitch();
-    expect(startRound({ random: fixed(0) }).nextPitch()).toEqual(slow);
+    const slow = startRound({ random: fixed(0), difficulty: 'easy' }).nextPitch();
+    const fast = startRound({ random: fixed(0.999), difficulty: 'easy' }).nextPitch();
+    expect(startRound({ random: fixed(0), difficulty: 'easy' }).nextPitch()).toEqual(slow);
     expect(slow.type).toBe('fastball');
-    expect(fast.speedKmh).toBeGreaterThan(slow.speedKmh);
+    expect(fast.mph).toBeGreaterThan(slow.mph);
     expect(fast.flightMs).toBeLessThan(slow.flightMs);
   });
 
   it('the ideal contact moment comes after the windup and the flight to the plate', () => {
-    const pitch = startRound({ random: fixed(0.5) }).nextPitch();
+    const pitch = startRound({ random: fixed(0.5), difficulty: 'easy' }).nextPitch();
     expect(pitch.releaseMs).toBeGreaterThan(0);
     expect(pitch.contactMs).toBeCloseTo(pitch.releaseMs + pitch.flightMs);
   });
 
   it('each pitch takes exactly one result', () => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), difficulty: 'easy' });
     expect(() => round.swing(0)).toThrow();
     const pitch = round.nextPitch();
     round.swing(pitch.contactMs)!;
@@ -145,14 +145,14 @@ describe('pitches', () => {
   });
 
   it('any swing before the swing deadline still counts as a swing', () => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), difficulty: 'easy' });
     const pitch = round.nextPitch();
     expect(pitch.swingDeadlineMs).toBeGreaterThan(pitch.contactMs);
     expect(round.swing(pitch.swingDeadlineMs - 1)).toMatchObject({ kind: 'out', out: 'whiff', timing: 'late' });
   });
 
   it('a tap after the swing deadline is not a swing: it is ignored and the pitch still waits for its result', () => {
-    const round = startRound({ random: fixed(0.5) });
+    const round = startRound({ random: fixed(0.5), difficulty: 'easy' });
     const pitch = round.nextPitch();
     expect(round.swing(pitch.swingDeadlineMs + 1)).toBeNull();
     expect(round.state().outs).toBe(0);

@@ -1,21 +1,24 @@
 import {
   CatmullRomCurve3,
+  Euler,
   Mesh,
   MeshBasicMaterial,
   Quaternion,
   TubeGeometry,
   Vector3,
-  type Camera,
+  type PerspectiveCamera,
   type Scene,
 } from 'three';
 import { FIELD, type HomeRun, type TimingGrade } from '../core';
 import { bouncePath, createBallFx, createBursts, createCrowd, TRAIL, type BurstSpec } from './cinematicFx';
 import type { CinematicOverlay } from './cinematicOverlay';
-import { seededRandom } from './coords';
+import { seededRandom, toWorld } from './coords';
 import { FACILITY_POP, type FacilityView } from './facilities';
 import { TIMING_LABEL } from './hud';
-import { CONTACT_POINT, RELEASE_POINT, type Batter, type Pitcher } from './players';
-import { BATTER_VIEW } from './view';
+import { CONTACT_POINT, type Batter, type Pitcher } from './players';
+import { BAT_LENGTH, MOUND, PITCH_END, STANCE_END } from './poses';
+import { pickShotPlan, type ChaseCam, type ContactCam, type ShotPlan, type SwingCam } from './shotPlan';
+import { BATTER_VIEW, setLens } from './view';
 
 /**
  * 全壘打演出: the director. A home run plays a list of shots (camera, poses,
@@ -25,7 +28,9 @@ import { BATTER_VIEW } from './view';
  * playback rate, and the ball, camera and effects are evaluated from that. So
  * the slow motion, the hit-stop and the skip don't depend on the frame rate.
  *
- * Shot list and look come from the storyboard prototype (prototype/hr-cinematic).
+ * Which 揮棒特寫, 擊球特寫 and chase play is the 鏡頭組合 (shotPlan.ts), picked per home run.
+ *
+ * Shot list and look come from the storyboard prototype (prototype/hr-cinematic, v6).
  */
 
 const DEG = Math.PI / 180;
@@ -46,13 +51,13 @@ interface Shot {
 /**
  * Shot lengths (shot time, s) and playback rates. Tune feel here.
  * full: every shot at 1×. short: a faster 揮棒特寫, no 擊球特寫, a quicker chase / impact / 飛距離.
- * From contact to the start of the return shot, across 120–165 m, this gives
- * about 5 s for the short version and about 9 s for the full one (spec).
+ * From contact to the start of the return shot, across 120–165 m and every 擊球特寫,
+ * this gives about 5 s for the short version and about 9 s for the full one (spec).
  */
 const SHOTS = {
   swing: { dur: 1.4, rate: { full: 1, short: 1.6 } },
-  /** 擊球特寫: left out of the short version. */
-  contact: { dur: 1.0, rate: 1, inShort: false },
+  /** 擊球特寫 (the full version only): its length per 鏡頭組合 choice is in CONTACT_CAM. */
+  contact: { rate: 1 },
   /**
    * Chase length = base + (飛距離 − fromM) / perMetre: the shortest 全壘打 (just over the
    * wall) gets the base, and a longer one a little more, without moving the total much.
@@ -71,10 +76,29 @@ const BEAT = {
   releaseS: 1.08,
   /** The 揮棒特寫 starts its slow-motion re-run of the pitch this far (m) before the bat. */
   approachM: 1.6,
-  /** Flight fraction (0 = bat, 1 = landing) at the end of: 揮棒特寫, 擊球特寫, chase. */
+  /** Flight fraction (0 = bat, 1 = landing) at the end of: 揮棒特寫, chase (the 擊球特寫's is in CONTACT_CAM). */
   fSwing: 0.004,
-  fContact: 0.06,
   fChase: 0.88,
+  /**
+   * 打者甩棒: the bat leaves the hands this far into the shot, and the head tilts up this much (rad)
+   * over flipLookS. The camera (position, look-at) sits low beside him, so the face shows under the helmet.
+   */
+  flipS: 0.3,
+  flipLookUp: 0.65,
+  flipLookS: 0.35,
+  flipCam: [1.5, 0.8, -1.8, -0.6, 1.35, 0.25],
+  /**
+   * 投手回頭目送: the pitcher turns from turnS (s into the shot) for turnForS. The camera starts
+   * close in front of him (turnCam: x, y, m in front of the mound) and pulls back low (turnCamBack) so
+   * he and the ball over him fit; as the ball gets panOverM past it, it tilts halfway up to the ball (at most panMaxDeg).
+   */
+  turnS: 0.1,
+  turnForS: 0.7,
+  turnCam: [0.9, 1.1, 4.2],
+  turnCamBack: [1.2, 0.5, 12],
+  turnLookY: 1.5,
+  panMaxDeg: 24,
+  panOverM: 8,
   /** Impact shot: the ball reaches its landing this far in. */
   impactS: 0.4,
   /** Speed lines stay on this long into the chase. */
@@ -107,9 +131,119 @@ const FX = {
   afterStands: [5, 6],
   afterSmash: [22, 2],
   afterHit: [-9, 4],
+  /** Impact shot camera: back from the landing (m), across, up, and how far below the landing it looks. */
+  impactCam: [24, 16, 4, 1],
+  impactCamStands: [11, 6, 2.5, 0.2],
   tubeRadius: 0.45,
   tubeColor: '#ffc83d',
+  /** 打者甩棒: the bat's launch velocity (m/s), spin (rad/s, Euler XYZ), gravity, and the settle onto the grass. */
+  batThrow: [-1.2, 3.2, 1.6],
+  batSpin: [9, 2, 6],
+  batGravity: 12,
+  batRestY: 0.05,
+  batSettleS: 0.12,
 } as const;
+
+const setCamOn = (camera: PerspectiveCamera, px: number, py: number, pz: number, lx: number, ly: number, lz: number) => {
+  camera.position.set(px, py, pz);
+  camera.lookAt(lx, ly, lz);
+};
+
+/** 揮棒特寫 cameras over u = 0..1 of the shot: 斜前方低角度, 捕手視角, 正面, 地面仰角. */
+const SWING_CAM: Record<SwingCam, (camera: PerspectiveCamera, u: number) => void> = {
+  front: (c, u) => setCamOn(c, 1.15 - 0.2 * u, 0.7 + 0.08 * u, -2.0 + 0.3 * u, -0.4, 0.95, 0.2),
+  catcher: (c, u) => setCamOn(c, 0.55 - 0.1 * u, 0.95, 2.3 - 0.4 * u, -0.35, 1.0, -1.2),
+  face: (c, u) => setCamOn(c, 2.6 - 0.5 * u, 1.0, 0.25, -0.55, 1.0, 0.15),
+  worm: (c, u) => setCamOn(c, 0.45, 0.12 + 0.05 * u, -1.3 + 0.2 * u, -0.5, 1.35, 0.2),
+};
+
+/** What a 擊球特寫 drives: the camera, the batter, and the 打者甩棒 throw. `look` is scratch. */
+interface ContactRig {
+  camera: PerspectiveCamera;
+  batter: Batter;
+  look: Vector3;
+  throwBat(atMs: number, swing: number): BatThrow;
+}
+
+/** The batter's follow-through during the 擊球特寫, at shot time t. */
+const contactSwing = (t: number) => 0.62 + 0.38 * clamp01(t / 0.6);
+
+interface ContactShot {
+  /** Length, shot time s. */
+  dur: number;
+  /** Flight fraction (0 = bat, 1 = landing) at the end of the shot (= start of the chase). */
+  fEnd: number;
+  /** The ball's pace: u = 0..1 of the shot → 0..1 of the way from the 揮棒特寫's end to fEnd. */
+  pace(u: number): number;
+  /** Speed lines start with this shot (otherwise with the chase). */
+  speedLines: boolean;
+  /** At play(): sets up what this shot does on its own clock; `at(tS)` is the real time of shot time tS. */
+  schedule?(p: Plan, at: (tS: number) => number, rig: ContactRig): void;
+  /** Camera (and figures) at shot time t of dur s; `ball` is where the ball is, `thrown` whether the bat has left the hands. */
+  pose(rig: ContactRig, p: Plan, t: number, dur: number, ball: Vector3, thrown: boolean): void;
+}
+
+/**
+ * 擊球特寫 (the full version only), one entry per 鏡頭組合 choice: 光軌送棒, 打者甩棒, 投手回頭目送.
+ * A new 擊球特寫 is one entry here plus its name in shotPlan.ts.
+ */
+const CONTACT_CAM: Record<ContactCam, ContactShot> = {
+  trail: {
+    dur: 1.0,
+    fEnd: 0.06,
+    // Slow motion easing back to speed.
+    pace: easeIn,
+    // Speed lines go with the 光軌送棒.
+    speedLines: true,
+    pose({ camera, look }, { dir, perp, side }, _t, _dur, ball) {
+      camera.position.copy(CONTACT_POINT).addScaledVector(dir, -3.2).addScaledVector(perp, 2.4 * side);
+      camera.position.y = 1.1;
+      camera.lookAt(look.set(-0.6, 1.3, 0.2).lerp(ball, 0.55));
+    },
+  },
+  flip: {
+    dur: 1.4,
+    fEnd: 0.07,
+    pace: easeIn,
+    speedLines: false,
+    schedule(p, at, rig) {
+      p.bat = rig.throwBat(at(BEAT.flipS), contactSwing(BEAT.flipS));
+    },
+    // 打者甩棒: beside the batter; he lets the bat fly and looks up after the ball.
+    pose({ camera, batter }, _p, t, _dur, _ball, thrown) {
+      setCamOn(camera, ...BEAT.flipCam);
+      if (thrown) batter.lookUp(BEAT.flipLookUp * smooth(clamp01((t - BEAT.flipS) / BEAT.flipLookS)));
+    },
+  },
+  pitcher: {
+    dur: 1.5,
+    fEnd: 0.2,
+    // A steadier pace so the ball gets over the pitcher in the shot.
+    pace: (u) => u,
+    speedLines: false,
+    schedule(p, at) {
+      p.turnMs = at(BEAT.turnS);
+    },
+    // 投手回頭目送: close in front of the pitcher, who turns; the camera pulls back low and
+    // centres between him and where the ball crosses his depth (a pulled hit goes by to the side),
+    // and once the ball has flown over the camera it tilts up after it.
+    pose({ camera, look }, { dir }, t, dur, ball) {
+      const wide = (dir.x / -dir.z) * -MOUND.z;
+      const [x0, y0, z0] = BEAT.turnCam;
+      const [x1, y1, back] = BEAT.turnCamBack;
+      const z1 = Math.max(back, Math.abs(wide) * 1.2 + 4);
+      const k = smooth(clamp01(t / dur));
+      camera.position.set(x0 + (x1 + wide / 2 - x0) * k, y0 + (y1 - y0) * k, MOUND.z + z0 + (z1 - z0) * k);
+      // Tilt up toward the ball, at most so far that the pitcher stays at the bottom of the frame.
+      const run = camera.position.z - MOUND.z;
+      const atPitcher = Math.atan2(BEAT.turnLookY - camera.position.y, run);
+      const atBall = Math.atan2(ball.y - camera.position.y, Math.max(1, camera.position.z - ball.z));
+      const tilt = smooth(clamp01((camera.position.z - ball.z) / BEAT.panOverM));
+      const elev = atPitcher + tilt * Math.max(0, Math.min((atBall - atPitcher) / 2, BEAT.panMaxDeg * DEG));
+      camera.lookAt(look.set((wide / 2) * k, camera.position.y + run * Math.tan(elev), MOUND.z));
+    },
+  },
+};
 
 /** Words that pop up (the 設施 ones are FACILITY_POP). The 時機評價 is the HUD's label, shouted: PERFECT!, 太早！. */
 const timingPop = (grade: TimingGrade) => {
@@ -120,7 +254,7 @@ const STANDS_POP = '落入觀眾席';
 
 export interface CinematicCast {
   scene: Scene;
-  camera: Camera;
+  camera: PerspectiveCamera;
   ball: Mesh;
   batter: Batter;
   pitcher: Pitcher;
@@ -156,8 +290,27 @@ export interface Cinematic {
 
 type BallState = 'approach' | 'stop' | 'flight' | 'landed' | 'pitcher';
 
+/** 打者甩棒: the thrown bat, closed form from its release. */
+interface BatThrow {
+  atMs: number;
+  from: Vector3;
+  spin0: Euler;
+  /** Seconds after release when it reaches the grass, and how it lies there. */
+  landS: number;
+  rest: { position: Vector3; quaternion: Quaternion };
+}
+
 interface Plan {
   result: HomeRun;
+  cams: ShotPlan;
+  /** The 擊球特寫 (null in the short version). */
+  contact: ContactShot | null;
+  /** Flight fraction at the end of the 擊球特寫 (= start of the chase). */
+  fContact: number;
+  bat: BatThrow | null;
+  /** 投手回頭目送: when the turn starts (Infinity: no turn), and the heading it turns to. */
+  turnMs: number;
+  turnHeading: number;
   shots: Shot[];
   /** Real start time of each shot; a shot ends where the next starts. */
   startMs: number[];
@@ -198,7 +351,11 @@ const noise = (ms: number, seed: number) => {
   return (v - Math.floor(v)) * 2 - 1;
 };
 
-export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): Cinematic {
+/**
+ * `random` picks each home run's 鏡頭組合 (late-bound Math.random by default, so
+ * consecutive home runs differ).
+ */
+export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}, random: () => number = () => Math.random()): Cinematic {
   const { scene, camera, ball, batter, pitcher, facilities, overlay } = cast;
   const bursts = createBursts(scene);
   const crowd = createCrowd(scene);
@@ -206,10 +363,11 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
   const rand = seededRandom(4242);
   const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
   const reduced = () => !!reducedMotion?.matches;
-  const approachP = 1 - BEAT.approachM / RELEASE_POINT.distanceTo(CONTACT_POINT);
+  const approachP = () => 1 - BEAT.approachM / pitcher.releasePoint.distanceTo(CONTACT_POINT);
   const tmp = new Vector3();
   const tmp2 = new Vector3();
   const look = new Vector3();
+  const batEuler = new Euler();
   const batterQuat = (() => {
     const q = camera.quaternion.clone();
     const p = camera.position.clone();
@@ -244,7 +402,8 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
     switch (s.id) {
       case 'swing':
         if (t < BEAT.contactS) {
-          p.approach(approachP + ((1 - approachP) * t) / BEAT.contactS, out);
+          const p0 = approachP();
+          p.approach(p0 + ((1 - p0) * t) / BEAT.contactS, out);
           return 'approach';
         }
         if (t < BEAT.releaseS) {
@@ -254,45 +413,129 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
         flightPos(p, BEAT.fSwing * clamp01((t - BEAT.releaseS) / (s.dur - BEAT.releaseS)), out);
         return 'flight';
       case 'contact':
-        flightPos(p, BEAT.fSwing + (BEAT.fContact - BEAT.fSwing) * easeIn(clamp01(t / s.dur)), out);
+        flightPos(p, BEAT.fSwing + (p.fContact - BEAT.fSwing) * p.contact!.pace(clamp01(t / s.dur)), out);
         return 'flight';
-      case 'chase': {
-        const f0 = p.result.cinematic === 'full' ? BEAT.fContact : BEAT.fSwing;
-        flightPos(p, f0 + (BEAT.fChase - f0) * clamp01(t / s.dur), out);
+      case 'chase':
+        flightPos(p, p.fContact + (BEAT.fChase - p.fContact) * clamp01(t / s.dur), out);
         return 'flight';
-      }
       default:
         flightPos(p, BEAT.fChase + (1 - BEAT.fChase) * clamp01(t / BEAT.impactS), out);
         return 'flight';
     }
   };
 
-  const setCam = (px: number, py: number, pz: number, lx: number, ly: number, lz: number) => {
-    camera.position.set(px, py, pz);
-    camera.lookAt(lx, ly, lz);
+  const setCam = (px: number, py: number, pz: number, lx: number, ly: number, lz: number) => setCamOn(camera, px, py, pz, lx, ly, lz);
+
+  /** Chase camera position and look-at for ball position b: 後方追球, 側面追球, 上方俯瞰, 外野迎面. */
+  const chaseGoal = (p: Plan, kind: ChaseCam, b: Vector3, outPos: Vector3, outLook: Vector3) => {
+    const { dir, perp, side } = p;
+    switch (kind) {
+      case 'side':
+        outPos.copy(b).addScaledVector(perp, -15 * side).addScaledVector(dir, -3);
+        outPos.y += 1.5;
+        outLook.copy(b).addScaledVector(dir, 5);
+        break;
+      case 'top':
+        outPos.copy(b).addScaledVector(dir, -8);
+        outPos.y += 22;
+        outLook.copy(b).addScaledVector(dir, 9);
+        break;
+      case 'outfield':
+        toWorld(p.result.ball.angle, 113, 7, outPos).addScaledVector(perp, 8 * side);
+        outLook.copy(b);
+        break;
+      case 'behind':
+        outPos.copy(b).addScaledVector(dir, -9).addScaledVector(perp, 2.5);
+        outPos.y += 3.5;
+        outLook.copy(b).addScaledVector(dir, 15);
+        outLook.y -= 2;
+        break;
+    }
   };
+
+  /** 打者甩棒: where the thrown bat is at ms (it stays in the hands before the throw). Pure in (plan, ms). */
+  const placeBat = (b: BatThrow, ms: number) => {
+    const tS = (ms - b.atMs) / 1000;
+    const bat = batter.bat;
+    if (tS >= b.landS + FX.batSettleS) {
+      bat.position.copy(b.rest.position);
+      bat.quaternion.copy(b.rest.quaternion);
+      return;
+    }
+    const fly = Math.min(tS, b.landS);
+    const [vx, vy, vz] = FX.batThrow;
+    const [wx, wy, wz] = FX.batSpin;
+    bat.position.set(b.from.x + vx * fly, b.from.y + vy * fly - 0.5 * FX.batGravity * fly * fly, b.from.z + vz * fly);
+    batEuler.set(b.spin0.x + wx * fly, b.spin0.y + wy * fly, b.spin0.z + wz * fly);
+    bat.quaternion.setFromEuler(batEuler);
+    if (tS > b.landS) {
+      // Settles flat on the grass.
+      const u = smooth((tS - b.landS) / FX.batSettleS);
+      bat.position.lerp(b.rest.position, u);
+      bat.quaternion.slerp(b.rest.quaternion, u);
+    }
+  };
+
+  /** Sets up the bat throw: starts from the bat's pose at the release, lands when either end touches the grass. */
+  const throwBat = (atMs: number, swing: number): BatThrow => {
+    batter.holdBat(true);
+    batter.setStance(STANCE_END);
+    batter.setSwing(swing);
+    const bat = batter.bat;
+    const b: BatThrow = {
+      atMs,
+      from: bat.position.clone(),
+      spin0: new Euler().setFromQuaternion(bat.quaternion),
+      landS: 3,
+      rest: { position: new Vector3(), quaternion: new Quaternion() },
+    };
+    const axis = new Vector3();
+    for (let tS = 0.05; tS < 3; tS += 0.005) {
+      b.landS = tS;
+      placeBat({ ...b, landS: Infinity }, atMs + tS * 1000);
+      axis.set(0, 1, 0).applyQuaternion(bat.quaternion);
+      if (Math.min(bat.position.y, bat.position.y + axis.y * BAT_LENGTH) <= FX.batRestY) break;
+    }
+    placeBat({ ...b, landS: Infinity }, atMs + b.landS * 1000);
+    axis.set(0, 1, 0).applyQuaternion(bat.quaternion).setY(0);
+    if (axis.lengthSq() < 1e-6) axis.set(1, 0, 0);
+    axis.normalize();
+    b.rest.position.copy(bat.position).setY(FX.batRestY);
+    b.rest.quaternion.setFromUnitVectors(tmp.set(0, 1, 0), axis);
+    return b;
+  };
+
+  const rig: ContactRig = { camera, batter, look, throwBat };
+
+  /** 投手回頭目送: 0..1 of the turn at ms. */
+  const turnAt = (p: Plan, ms: number) => smooth(clamp01((ms - p.turnMs) / (BEAT.turnForS * 1000)));
 
   /** Camera + figures for shot i at shot time t. */
   const pose = (p: Plan, i: number, t: number, ms: number) => {
     const s = p.shots[i];
     const { dir, perp, side, to } = p;
-    pitcher.setWindup(s.id === 'return' ? 0 : 1.2);
-    batter.setStride(s.id === 'return' ? 0 : 1);
+    // Wide lens for the show, narrowing back to the batter view's on the way home.
+    setLens(camera, s.id === 'return' ? smooth(clamp01(t / s.dur)) : 0);
+    const back = s.id === 'return';
+    pitcher.setWindup(back ? 0 : PITCH_END);
+    pitcher.setTurn(back ? 0 : turnAt(p, ms), p.turnHeading);
+    // 打者甩棒: from the throw until the return shot, the bat is the cinematic's.
+    const thrown = !back && p.bat !== null && ms >= p.bat.atMs;
+    batter.holdBat(!thrown);
+    if (thrown) placeBat(p.bat!, ms);
+    batter.setStance(back ? 0 : STANCE_END);
     switch (s.id) {
       case 'swing': {
-        const u = clamp01(t / s.dur);
-        setCam(1.15 - 0.2 * u, 0.7 + 0.08 * u, -2.0 + 0.3 * u, -0.4, 0.95, 0.2);
+        SWING_CAM[p.cams.swing](camera, clamp01(t / s.dur));
         if (t < BEAT.contactS) batter.setSwing(0.4 * clamp01((t - 0.25) / (BEAT.contactS - 0.25)));
         else if (t < BEAT.releaseS) batter.setSwing(0.4);
         else batter.setSwing(0.4 + 0.22 * clamp01((t - BEAT.releaseS) / (s.dur - BEAT.releaseS)));
         break;
       }
       case 'contact': {
-        batter.setSwing(0.62 + 0.38 * clamp01(t / 0.6));
-        camera.position.copy(CONTACT_POINT).addScaledVector(dir, -3.2).addScaledVector(perp, 2.4 * side);
-        camera.position.y = 1.1;
+        batter.setSwing(contactSwing(t));
         ballAt(p, ms, tmp);
-        camera.lookAt(look.set(-0.6, 1.3, 0.2).lerp(tmp, 0.55));
+        p.contact!.pose(rig, p, t, s.dur, tmp, thrown);
         break;
       }
       case 'chase': {
@@ -300,19 +543,19 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
         // Follow where the ball was a moment ago: a lagging chase cam, but closed-form.
         const lagMs = ms - ((BEAT.chaseLagS / s.rate) * 1000);
         ballAt(p, Math.max(p.startMs[i], lagMs), tmp);
-        camera.position.copy(tmp).addScaledVector(dir, -9).addScaledVector(perp, 2.5);
-        camera.position.y += 3.5;
-        look.copy(tmp).addScaledVector(dir, 15);
-        look.y -= 2;
+        chaseGoal(p, p.cams.chase, tmp, camera.position, look);
         camera.lookAt(look);
         break;
       }
-      case 'impact':
+      case 'impact': {
         batter.setSwing(1);
-        camera.position.copy(to).addScaledVector(dir, -24).addScaledVector(perp, 16 * side);
-        camera.position.y = to.y + 4;
-        camera.lookAt(to.x, to.y - 1, to.z);
+        // Into the stands: close enough to see the fans cheer. Elsewhere: wide on the 設施.
+        const [back, across, up, below] = p.result.landing.kind === 'stands' ? FX.impactCamStands : FX.impactCam;
+        camera.position.copy(to).addScaledVector(dir, -back).addScaledVector(perp, across * side);
+        camera.position.y = to.y + up;
+        camera.lookAt(to.x, to.y - below, to.z);
         break;
+      }
       case 'distance': {
         batter.setSwing(1);
         distancePose(p, smooth(clamp01(t / s.dur)));
@@ -418,7 +661,7 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
     const chaseMs = startOf(p, 'chase');
     overlay.letterbox(startMs, returnMs);
     overlay.skipHint(startMs, distanceMs);
-    const speedOn = p.result.cinematic === 'full' ? startOf(p, 'contact') : chaseMs;
+    const speedOn = p.contact?.speedLines ? startOf(p, 'contact') : chaseMs;
     const speedOff = Math.min(distanceMs, chaseMs + BEAT.speedLinesIntoChaseS * 1000);
     overlay.speedLines(speedOn, speedOff);
     overlay.distance(Math.round(p.result.ball.distance), distanceMs, returnMs);
@@ -426,6 +669,9 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
 
   const finish = (p: Plan) => {
     ballFx.hide();
+    // The thrown bat goes back to the batter, the pitcher faces home.
+    batter.holdBat(true);
+    pitcher.setTurn(0, 0);
     if (p.tube) {
       scene.remove(p.tube);
       p.tube.geometry.dispose();
@@ -433,6 +679,7 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
     }
     overlay.clear();
     setCam(...BATTER_VIEW.position, ...BATTER_VIEW.lookAt);
+    setLens(camera, 1);
     plan = null;
   };
 
@@ -448,9 +695,11 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
       if (plan) finish(plan);
       const version = result.cinematic;
       const dist = result.ball.distance;
+      const cams = pickShotPlan(random, version);
+      const contact = cams.contact ? CONTACT_CAM[cams.contact] : null;
       const shots: Shot[] = [
         { id: 'swing', dur: SHOTS.swing.dur, rate: SHOTS.swing.rate[version] },
-        ...(version === 'full' || SHOTS.contact.inShort ? [{ id: 'contact' as const, dur: SHOTS.contact.dur, rate: SHOTS.contact.rate }] : []),
+        ...(contact ? [{ id: 'contact' as const, dur: contact.dur, rate: SHOTS.contact.rate }] : []),
         { id: 'chase', dur: SHOTS.chase.base[version] + (dist - SHOTS.chase.fromM) / SHOTS.chase.perMetre, rate: SHOTS.chase.rate[version] },
         { id: 'impact', dur: SHOTS.impact.dur, rate: SHOTS.impact.rate[version] },
         { id: 'distance', dur: SHOTS.distance.dur, rate: SHOTS.distance.rate[version] },
@@ -469,6 +718,13 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
       const [along, up] = landing.kind === 'stands' ? FX.afterStands : landing.smashed ? FX.afterSmash : FX.afterHit;
       const p: Plan = {
         result,
+        cams,
+        contact,
+        fContact: contact ? contact.fEnd : BEAT.fSwing,
+        bat: null,
+        turnMs: Infinity,
+        // Facing the ball's way: yaw θ turns +z (home) to (sin θ, 0, cos θ) = dir.
+        turnHeading: Math.PI - a,
         shots,
         startMs,
         endMs: t,
@@ -490,6 +746,10 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
         skipped: false,
       };
       p.contactMs = realAt(p, 0, BEAT.contactS);
+      if (contact?.schedule) {
+        const contactShot = shots.findIndex((s) => s.id === 'contact');
+        contact.schedule(p, (tS) => realAt(p, contactShot, tS), rig);
+      }
       const impactShot = shots.findIndex((s) => s.id === 'impact');
       p.impactMs = realAt(p, impactShot, BEAT.impactS);
       // The ball clears the wall: first sampled moment past the fence.
@@ -528,6 +788,9 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}): 
         p.impactMs = atMs;
         fireImpact(p, atMs, true);
       }
+      // A 擊球特寫 that hasn't got to its throw / turn yet doesn't do it.
+      if (p.bat && p.bat.atMs > atMs) p.bat = null;
+      if (p.turnMs > atMs) p.turnMs = Infinity;
       p.shakes = [];
       scheduleOverlay(p);
       overlay.speedLines(Infinity, Infinity);
