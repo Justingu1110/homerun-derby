@@ -58,8 +58,14 @@ describe('投手: each 難度 has its own 投手 look', () => {
     }
   });
 
-  it('the name on the back is the 難度 table\'s 投手 name', () => {
-    for (const d of DIFFICULTIES) expect(pitcherOf(d.id).look.nameOnBack).toBe(d.pitcher.toUpperCase());
+  it('the name on the back is the 難度 table\'s 投手 name in capitals', () => {
+    expect(DIFFICULTIES.map((d) => [d.pitcher, pitcherOf(d.id).look.nameOnBack])).toEqual([
+      ['Luna', 'LUNA'],
+      ['Glasnow', 'GLASNOW'],
+      ['Snell', 'SNELL'],
+      ['Otani', 'OTANI'],
+      ['Yamamoto', 'YAMAMOTO'],
+    ]);
   });
 
   it('throws on an unknown 難度', () => {
