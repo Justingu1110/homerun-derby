@@ -1,7 +1,7 @@
 import { TUNING } from '../core';
 import { localJsonStore } from './jsonStore';
 
-/** 設定: kept on this device. Separate from the 投球設定 (their own key and screen). */
+/** 設定: kept on this device. Separate from the chosen 難度 (its own key and screen). */
 export interface Settings {
   /** 隨機幅度, 0–1 (the slider's 0–100%). Passed to startRound({ randomness }). */
   randomness: number;

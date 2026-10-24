@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { startRound, type PitchResult, type PitchSettings, type Round } from './index';
+import { startRound, type PitchResult, type Round } from './index';
 
 const fixed = (v: number) => () => v;
-const X1: PitchSettings = { types: ['fastball'], speed: 'slow' };
 /** 隨機幅度 0: a timing error always gives the same direction and 飛距離 (see facilities.test.ts). */
-const start = (random: () => number) => startRound({ random, randomness: 0, pitchSettings: X1 });
+const start = (random: () => number) => startRound({ random, randomness: 0, difficulty: 'easy' });
 const swingOnce = (round: Round, err: number): PitchResult => {
   const pitch = round.nextPitch();
   return round.swing(pitch.contactMs + err)!;

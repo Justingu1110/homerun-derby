@@ -1,8 +1,8 @@
 import './style.css';
-import { readBestScore, startRound } from './core';
+import { difficulty, readBestScore, startRound } from './core';
 import { createFeedback } from './app/feedback';
-import { createPitchSettingsScreen } from './app/pitchSettingsScreen';
-import { localPitchSettingsStorage } from './app/pitchSettingsStorage';
+import { mountDifficultyScreen } from './app/difficultyScreen';
+import { localDifficultyStorage } from './app/difficultyStorage';
 import { createScreens } from './app/screens';
 import { localSettings } from './app/settings';
 import { mountSettingsScreen } from './app/settingsScreen';
@@ -40,35 +40,31 @@ const atBat = createAtBat(view.scene, view.camera, hud, createCinematicOverlay(c
   },
 });
 const storage = localBestScoreStorage();
-const pitchSettingsStorage = localPitchSettingsStorage();
+const difficultyStorage = localDifficultyStorage();
 
-// Screen flow: 標題 → 一局 → 結算 → (再玩一次 → 一局) | (回標題 → 標題); 標題 ⇄ 投球設定.
+// Screen flow: 標題 → 一局 → 結算 → (再玩一次 → 一局) | (回標題 → 標題); 標題 ⇄ 選難度, 標題 ⇄ 設定.
 const showTitle = () => {
   hud.showRound(null);
-  screens.showTitle(readBestScore(storage));
+  screens.showTitle(readBestScore(storage), difficulty(difficultyStorage.load()));
 };
 const play = () => {
   screens.hide();
-  atBat.play(startRound({ random: Math.random, storage, pitchSettings: pitchSettingsStorage.load(), randomness: settings.get().randomness }), performance.now(), (state) => {
+  atBat.play(startRound({ random: Math.random, storage, difficulty: difficultyStorage.load(), randomness: settings.get().randomness }), performance.now(), (state) => {
     hud.showRound(null);
     screens.showResult(state);
   });
-};
-const pitchSettingsScreen = createPitchSettingsScreen(document.body, pitchSettingsStorage, () => {
-  pitchSettingsScreen.hide();
-  showTitle();
-});
-const openPitchSettings = () => {
-  screens.hide();
-  pitchSettingsScreen.show();
 };
 const screens = createScreens(screensRoot, {
   start: play,
   backToTitle: showTitle,
   settings: () => screens.showSettings(),
-  pitchSettings: openPitchSettings,
+  difficulty: () => {
+    difficultyScreen.refresh();
+    screens.showDifficulty();
+  },
 });
 mountSettingsScreen(screens.settingsPanel, settings);
+const difficultyScreen = mountDifficultyScreen(screens.difficultyPanel, difficultyStorage, showTitle);
 showTitle();
 
 // Swing on any tap. event.timeStamp is a high-resolution time on the same clock

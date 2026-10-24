@@ -13,13 +13,13 @@ export const TUNING = {
     /** Release point to the contact point at the plate, metres. */
     flightDistance: 17.4,
     /**
-     * Speed range (km/h) of each 球種 at each 球速 level; each pitch picks a speed
-     * inside its range. 變速球 and 曲球 are slower than 直球 at the same level.
+     * 球速 range (mph) of each 球種 at each 球速 level; each pitch picks a speed
+     * inside its range. 直球 > 變速球 > 曲球 at the same level (原型 v6).
      */
-    speedKmh: {
-      fastball: { slow: { min: 96, max: 102 }, medium: { min: 112, max: 118 }, fast: { min: 130, max: 136 } },
-      changeup: { slow: { min: 80, max: 86 }, medium: { min: 92, max: 98 }, fast: { min: 106, max: 112 } },
-      curveball: { slow: { min: 78, max: 84 }, medium: { min: 90, max: 96 }, fast: { min: 102, max: 108 } },
+    speedMph: {
+      fastball: { slow: { min: 78, max: 82 }, medium: { min: 86, max: 90 }, fast: { min: 94, max: 99 } },
+      changeup: { slow: { min: 68, max: 72 }, medium: { min: 76, max: 80 }, fast: { min: 84, max: 88 } },
+      curveball: { slow: { min: 62, max: 66 }, medium: { min: 70, max: 74 }, fast: { min: 78, max: 82 } },
     },
     /** How far (m) a 曲球 drops below a straight line over its flight. */
     curveDropM: 0.9,

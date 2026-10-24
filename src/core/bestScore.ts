@@ -1,12 +1,12 @@
-import type { PitchSettings } from './pitchSettings';
+import { parseDifficultyId, type DifficultyId } from './difficulty';
 
-/** 最高分: one record per device, whatever the 投球設定. */
+/** 最高分: one record per device, whatever the 難度. */
 export interface BestScore {
   score: number;
   /** Total 飛距離 of that round (m): breaks a tie in 分數. */
   totalDistance: number;
-  /** The 投球設定 it was set with. Missing only on a record stored before 投球設定 existed. */
-  pitchSettings?: PitchSettings;
+  /** The 難度 it was set on. Missing only on a record stored before 難度 existed (v1). */
+  difficulty?: DifficultyId;
 }
 
 /**
@@ -27,12 +27,24 @@ export function readBestScore(storage: BestScoreStorage | undefined): BestScore 
   }
 }
 
+/**
+ * A 最高分 from untrusted data (e.g. localStorage), or null when it isn't one.
+ * A v1 record (no 難度, maybe an old 投球設定) still reads, without a 難度.
+ */
+export function parseBestScore(raw: unknown): BestScore | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const { score, totalDistance, difficulty } = raw as Record<string, unknown>;
+  if (!(typeof score === 'number' && Number.isFinite(score) && typeof totalDistance === 'number' && Number.isFinite(totalDistance))) return null;
+  const id = parseDifficultyId(difficulty);
+  return id ? { score, totalDistance, difficulty: id } : { score, totalDistance };
+}
+
 /** Records `result` if it beats the stored 最高分 (分數 first, then total 飛距離). Returns whether it did. */
 export function recordIfBest(storage: BestScoreStorage | undefined, result: BestScore): boolean {
   if (!beats(result, readBestScore(storage) ?? { score: 0, totalDistance: 0 })) return false;
   try {
-    const { score, totalDistance, pitchSettings } = result;
-    storage?.save(pitchSettings ? { score, totalDistance, pitchSettings } : { score, totalDistance });
+    const { score, totalDistance, difficulty } = result;
+    storage?.save(difficulty ? { score, totalDistance, difficulty } : { score, totalDistance });
   } catch {
     // Not saved, but it still was a record for this round.
   }
