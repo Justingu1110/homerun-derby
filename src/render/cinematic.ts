@@ -78,16 +78,21 @@ const BEAT = {
   approachM: 1.6,
   /** Flight fraction (0 = bat, 1 = landing) at the end of: 揮棒特寫, 擊球特寫 (per choice), chase. */
   fSwing: 0.004,
-  fContact: { trail: 0.06, flip: 0.07, pitcher: 0.16 } satisfies Record<ContactCam, number>,
+  fContact: { trail: 0.06, flip: 0.07, pitcher: 0.2 } satisfies Record<ContactCam, number>,
   fChase: 0.88,
   /** 打者甩棒: the bat leaves the hands this far into the shot, and the head tilts up this much (rad). */
   flipS: 0.3,
   flipLookUp: 0.3,
-  /** 投手回頭目送: the pitcher turns from here (s into the shot) for this long; the camera pans to the ball. */
+  /**
+   * 投手回頭目送: the pitcher turns from turnS (s into the shot) for turnForS. The camera (turnCam)
+   * looks at him and, as the ball gets panOverM past the camera, panTo of the way to the ball.
+   */
   turnS: 0.1,
   turnForS: 0.7,
-  panS: 0.4,
-  panForS: 1.1,
+  turnCam: [0.9, 1.1, MOUND.z + 4.2],
+  turnLookY: 1.5,
+  panTo: 0.75,
+  panOverM: 7,
   /** Impact shot: the ball reaches its landing this far in. */
   impactS: 0.4,
   /** Speed lines stay on this long into the chase. */
@@ -311,9 +316,12 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}, r
         }
         flightPos(p, BEAT.fSwing * clamp01((t - BEAT.releaseS) / (s.dur - BEAT.releaseS)), out);
         return 'flight';
-      case 'contact':
-        flightPos(p, BEAT.fSwing + (p.fContact - BEAT.fSwing) * easeIn(clamp01(t / s.dur)), out);
+      case 'contact': {
+        // Slow motion easing back to speed; 投手回頭目送 keeps a steadier pace so the ball gets over the pitcher in the shot.
+        const u = clamp01(t / s.dur);
+        flightPos(p, BEAT.fSwing + (p.fContact - BEAT.fSwing) * (p.cams.contact === 'pitcher' ? u : easeIn(u)), out);
         return 'flight';
+      }
       case 'chase':
         flightPos(p, p.fContact + (BEAT.fChase - p.fContact) * clamp01(t / s.dur), out);
         return 'flight';
@@ -437,9 +445,11 @@ export function createCinematic(cast: CinematicCast, cues: CinematicCues = {}, r
           setCam(2.1, 1.2, -1.0, -0.6, 1.1, 0.25);
           if (thrown) batter.lookUp(BEAT.flipLookUp * smooth(clamp01((t - BEAT.flipS) / 0.3)));
         } else if (p.cams.contact === 'pitcher') {
-          // 投手回頭目送: in front of the pitcher, who turns; the camera pans up to the ball going over him.
-          camera.position.set(0.9, 1.4, MOUND.z + 3);
-          look.set(0, 1.5, MOUND.z).lerp(tmp, 0.7 * smooth(clamp01((t - BEAT.panS) / BEAT.panForS)));
+          // 投手回頭目送: low in front of the pitcher, who turns; once the ball has flown over
+          // the camera, the camera tilts up after it going over his head.
+          camera.position.set(...BEAT.turnCam);
+          const ahead = camera.position.z - tmp.z;
+          look.set(0, BEAT.turnLookY, MOUND.z).lerp(tmp, BEAT.panTo * smooth(clamp01(ahead / BEAT.panOverM)));
           camera.lookAt(look);
         } else {
           camera.position.copy(CONTACT_POINT).addScaledVector(dir, -3.2).addScaledVector(perp, 2.4 * side);
