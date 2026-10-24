@@ -31,7 +31,12 @@ const EYE = '#141018';
 const SHOE_WHITE = '#f4f4f4';
 const GLOVE_WEB = '#5a3418';
 /** Height of the torso pivot (the hips) above the ground. */
-const HIP_Y = 0.36;
+export const HIP_Y = 0.36;
+/** Skull radius (head space), helmet dome and ear flap (centre in head space, radius), hand radii: for clearance checks. */
+export const HEAD_RADIUS = 0.4;
+export const HELMET = { domeY: 0.03, domeRadius: 0.445, flap: [0.39, -0.08, 0.02], flapRadius: 0.2 } as const;
+export const HAND_RADIUS = 0.15;
+export const GLOVE_RADIUS = 0.205;
 /** Where a cuff points to: the chest, in torso space (scaled by the torso height). */
 const CHEST_Y = 0.26;
 /** How far a cuff sits from its hand's centre, toward the chest. */
@@ -156,7 +161,7 @@ function addHair(head: Group, look: Appearance) {
 
 function addFace(head: Group, look: Appearance) {
   const skin = lit(look.skin, 0.75);
-  const skull = new Mesh(new SphereGeometry(0.4, 40, 30), skin);
+  const skull = new Mesh(new SphereGeometry(HEAD_RADIUS, 40, 30), skin);
   skull.scale.set(1.04, 0.97, 1);
   head.add(skull);
   const ear = lit(`#${new Color(look.skin).multiplyScalar(0.94).getHexString()}`, 0.75);
@@ -197,8 +202,8 @@ function addHeadgear(head: Group, look: Appearance, opts: CharacterOptions) {
   const helmet = opts.headgear === 'helmet';
   // The helmet is glossy (low roughness, a touch of metalness for the sheen); the cap is cloth.
   const mat = helmet ? lit(look.cap, 0.18, 0.15) : lit(look.cap, 0.7);
-  const dome = new Mesh(new SphereGeometry(helmet ? 0.445 : 0.425, 40, 20, 0, Math.PI * 2, 0, Math.PI * 0.5), mat);
-  dome.position.y = 0.03;
+  const dome = new Mesh(new SphereGeometry(helmet ? HELMET.domeRadius : 0.425, 40, 20, 0, Math.PI * 2, 0, Math.PI * 0.5), mat);
+  dome.position.y = HELMET.domeY;
   // Half-disc brim, only in front.
   const brim = new Mesh(new CylinderGeometry(0.22, 0.24, 0.035, 28, 1, false, 0, Math.PI), mat);
   brim.rotation.set(-0.12, -Math.PI / 2, 0);
@@ -206,9 +211,9 @@ function addHeadgear(head: Group, look: Appearance, opts: CharacterOptions) {
   brim.position.set(0, 0.06, 0.32);
   head.add(dome, brim);
   if (helmet) {
-    const flap = new Mesh(new SphereGeometry(0.2, 20, 14), mat);
+    const flap = new Mesh(new SphereGeometry(HELMET.flapRadius, 20, 14), mat);
     flap.scale.set(0.45, 1, 0.95);
-    flap.position.set((opts.flapSide ?? 1) * 0.39, -0.08, 0.02);
+    flap.position.set((opts.flapSide ?? 1) * HELMET.flap[0], HELMET.flap[1], HELMET.flap[2]);
     head.add(flap);
   } else {
     const badge = new Mesh(new CircleGeometry(0.075, 24), new MeshBasicMaterial({ color: look.trim }));
@@ -235,8 +240,8 @@ function shoe(look: Appearance): Group {
 
 /** A round hand; the fielding glove is bigger (nearly head-sized) with a darker web. Shape is baked into the geometry so children (the cuff) are not stretched. */
 function hand(look: Appearance, glove: boolean, bare: boolean): Mesh {
-  if (!glove) return new Mesh(new SphereGeometry(0.15, 28, 20), lit(bare ? look.skin : look.glove, 0.7));
-  const g = new Mesh(new SphereGeometry(0.19, 28, 20).scale(1, 1.08, 0.78), lit(look.glove, 0.55));
+  if (!glove) return new Mesh(new SphereGeometry(HAND_RADIUS, 28, 20), lit(bare ? look.skin : look.glove, 0.7));
+  const g = new Mesh(new SphereGeometry(GLOVE_RADIUS / 1.08, 28, 20).scale(1, 1.08, 0.78), lit(look.glove, 0.55));
   const web = new Mesh(new SphereGeometry(0.12, 18, 12).scale(0.9, 0.9, 0.5), lit(GLOVE_WEB, 0.6));
   web.position.set(0, 0.05, 0.12);
   g.add(web);
@@ -248,13 +253,35 @@ const castShadows = (o: Object3D) =>
     if ((m as Mesh).isMesh) m.castShadow = true;
   });
 
-/** Builds a character from appearance params. Same params → same look. */
-export function buildCharacter(look: Appearance, opts: CharacterOptions): Character {
+/** The posable parts of a character, without meshes: what a pose moves. */
+export interface Skeleton {
+  root: Object3D;
+  torso: Object3D;
+  head: Object3D;
+  /** [right (−x), left (+x)]. */
+  feet: [Object3D, Object3D];
+}
+
+/** Root, torso pivot, head and shoe anchors at their rest places for this look (no meshes, no DOM). */
+export function buildSkeleton(look: Appearance): { root: Group; torso: Group; head: Group; feet: [Group, Group] } {
   const root = new Group();
   root.scale.setScalar(look.scale);
   const torso = new Group();
   torso.position.y = HIP_Y;
   root.add(torso);
+  const head = new Group();
+  head.position.y = 0.64 + (look.torsoHeight - 1) * 0.42;
+  head.scale.setScalar(look.headScale);
+  torso.add(head);
+  const feet: [Group, Group] = [new Group(), new Group()];
+  feet.forEach((f, i) => f.position.set((i === 0 ? -1 : 1) * 0.16, 0, 0.05));
+  root.add(...feet);
+  return { root, torso, head, feet };
+}
+
+/** Builds a character from appearance params. Same params → same look. */
+export function buildCharacter(look: Appearance, opts: CharacterOptions): Character {
+  const { root, torso, head, feet } = buildSkeleton(look);
 
   // Egg-shaped jersey over round pants and a belt; width and torso height stretch only the body.
   const body = new Group();
@@ -273,17 +300,11 @@ export function buildCharacter(look: Appearance, opts: CharacterOptions): Charac
   body.add(jersey, pants, belt);
 
   // Big round head right on the body (no neck).
-  const head = new Group();
-  head.position.y = 0.64 + (look.torsoHeight - 1) * 0.42;
-  head.scale.setScalar(look.headScale);
-  torso.add(head);
   addFace(head, look);
   addHair(head, look);
   addHeadgear(head, look, opts);
 
-  const feet: [Group, Group] = [shoe(look), shoe(look)];
-  feet.forEach((f, i) => f.position.set((i === 0 ? -1 : 1) * 0.16, 0, 0.05));
-  root.add(...feet);
+  feet.forEach((f) => f.add(shoe(look)));
 
   const hands: [Mesh, Mesh] = [hand(look, false, !!opts.mitt), hand(look, !!opts.mitt, false)];
 
