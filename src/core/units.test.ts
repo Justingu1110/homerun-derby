@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { metresToFeet } from '.';
+import { metresToFeet } from './index';
 
 // The rules stay in metres; 飛距離 is shown to the player in feet (1 m = 3.281 ft, whole feet).
 describe('metres to feet', () => {
