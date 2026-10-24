@@ -11,7 +11,6 @@ import {
   Fog,
   Group,
   HemisphereLight,
-  InstancedMesh,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
@@ -31,6 +30,7 @@ import {
 } from 'three';
 import { FIELD, fieldPoint } from '../core';
 import { seededRandom, toWorld } from './coords';
+import { buildCrowd } from './crowd';
 import { STAND_ROWS, STANDS } from './stands';
 
 export { STAND_ROWS, STANDS, standsHeight, type StandRow } from './stands';
@@ -57,7 +57,6 @@ const COLORS = {
   seatB: '#2f5fb8',
   riser: '#5a6475',
   facade: '#1d2a4f',
-  shirts: ['#1f2a6b', '#ffffff', '#d6322b', '#ffc83d', '#2f78d8', '#f08bd0', '#1f8a5b', '#ff7a1a'],
 } as const;
 
 /** Made-up sponsors for the ad boards (no real brands), and their [background, text] colours. */
@@ -74,9 +73,6 @@ const AD_COLORS = [
 
 /** Stands-front ad band: just in front of the first row, its top a little above the front row's seats. */
 const STANDS_FRONT = { radius: STANDS.innerRadius - 0.4, top: STANDS.frontHeight + 0.5, adHeight: 1.2 } as const;
-
-/** Spectators sit about this far apart along a row; this share of seats is empty. */
-const CROWD = { spacing: 1.25, empty: 0.2 } as const;
 
 const flat = (color: string): Material => new MeshLambertMaterial({ color, side: DoubleSide });
 
@@ -359,35 +355,8 @@ function stands(): Object3D {
   g.add(adBand(radius - 0.02, top - adHeight, top, from, to, 4, 48));
   const last = STAND_ROWS[STAND_ROWS.length - 1];
   g.add(band(last.back + 0.2, 0, last.height + 1.5, from, to, facade));
-  g.add(crowd());
+  g.add(buildCrowd());
   return g;
-}
-
-/**
- * Placeholder spectators (one InstancedMesh named 'crowd', one box per fan),
- * seated along STAND_ROWS with a few empty seats. #19 replaces this with chibi fans.
- */
-function crowd(): InstancedMesh {
-  const rand = seededRandom(1110);
-  const seats: { angle: number; row: (typeof STAND_ROWS)[number] }[] = [];
-  for (const row of STAND_ROWS) {
-    const step = CROWD.spacing / row.seatRadius / DEG;
-    for (let angle = row.fromDeg + step / 2; angle < row.toDeg; angle += step) {
-      if (rand() >= CROWD.empty) seats.push({ angle: angle + (rand() - 0.5) * step * 0.2, row });
-    }
-  }
-  const mesh = new InstancedMesh(new BoxGeometry(0.7, 0.9, 0.5), new MeshLambertMaterial(), seats.length);
-  const shirts = COLORS.shirts.map((c) => new Color(c));
-  const o = new Object3D();
-  seats.forEach(({ angle, row }, i) => {
-    toWorld(angle, row.seatRadius, row.height + 0.45, o.position);
-    o.rotation.y = -angle * DEG;
-    o.updateMatrix();
-    mesh.setMatrixAt(i, o.matrix);
-    mesh.setColorAt(i, shirts[Math.floor(rand() * shirts.length)]);
-  });
-  mesh.name = 'crowd';
-  return mesh;
 }
 
 /** Builds the static ballpark: sky, lights, field, outfield wall and stands. */
