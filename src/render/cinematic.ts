@@ -79,9 +79,14 @@ const BEAT = {
   /** Flight fraction (0 = bat, 1 = landing) at the end of: 揮棒特寫, chase (the 擊球特寫's is in CONTACT_CAM). */
   fSwing: 0.004,
   fChase: 0.88,
-  /** 打者甩棒: the bat leaves the hands this far into the shot, and the head tilts up this much (rad). */
+  /**
+   * 打者甩棒: the bat leaves the hands this far into the shot, and the head tilts up this much (rad)
+   * over flipLookS. The camera (position, look-at) sits low beside him, so the face shows under the helmet.
+   */
   flipS: 0.3,
-  flipLookUp: 0.3,
+  flipLookUp: 0.65,
+  flipLookS: 0.35,
+  flipCam: [1.5, 0.8, -1.8, -0.6, 1.35, 0.25],
   /**
    * 投手回頭目送: the pitcher turns from turnS (s into the shot) for turnForS. The camera starts
    * close in front of him (turnCam: x, y, m in front of the mound) and pulls back low (turnCamBack) so
@@ -206,8 +211,8 @@ const CONTACT_CAM: Record<ContactCam, ContactShot> = {
     },
     // 打者甩棒: beside the batter; he lets the bat fly and looks up after the ball.
     pose({ camera, batter }, _p, t, _dur, _ball, thrown) {
-      setCamOn(camera, 2.1, 1.2, -1.0, -0.6, 1.1, 0.25);
-      if (thrown) batter.lookUp(BEAT.flipLookUp * smooth(clamp01((t - BEAT.flipS) / 0.3)));
+      setCamOn(camera, ...BEAT.flipCam);
+      if (thrown) batter.lookUp(BEAT.flipLookUp * smooth(clamp01((t - BEAT.flipS) / BEAT.flipLookS)));
     },
   },
   pitcher: {
