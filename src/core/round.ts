@@ -90,6 +90,8 @@ export interface RoundState {
   over: boolean;
   /** 分數: each 全壘打 scores 100 × multiplier. */
   score: number;
+  /** 難度 of this round (it decides the 投手). */
+  difficulty: DifficultyId;
   /** 難度倍率 of this round. */
   multiplier: number;
   /** 全壘打 so far. */
@@ -156,7 +158,7 @@ export function startRound(options: RoundOptions): Round {
   const isOver = () => outs >= TUNING.round.maxOuts;
   return {
     state() {
-      return { outs, maxOuts: TUNING.round.maxOuts, over: isOver(), score, multiplier, homeRuns, totalDistance, longest, newBest, smashed: facilities.smashed() };
+      return { outs, maxOuts: TUNING.round.maxOuts, over: isOver(), score, difficulty: difficulty.id, multiplier, homeRuns, totalDistance, longest, newBest, smashed: facilities.smashed() };
     },
     nextPitch() {
       if (isOver()) throw new Error('The round is over');

@@ -38,6 +38,10 @@ describe('難度: a fixed 難度倍率 each, and 全壘打 score 100 × it', () 
     expect(round.state().score).toBe(points);
   });
 
+  it('a round reports its 難度 (so the screen knows which 投手 pitches)', () => {
+    expect(startRound({ random: fixed(0.5), difficulty: 'hard' }).state().difficulty).toBe('hard');
+  });
+
   it('lists the five 難度 in order, each with its 投手', () => {
     expect(DIFFICULTIES.map((d) => [d.id, d.name, d.pitcher])).toEqual([
       ['easy', '簡易', 'Luna'],

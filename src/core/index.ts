@@ -14,3 +14,5 @@ export { BEARDS, DEFAULT_APPEARANCE, HAIR_STYLES, makeAppearance } from './appea
 export type { Appearance, Beard, HairStyle } from './appearance';
 export { FACILITIES, facilityHalfSpanDeg } from './facilities';
 export type { Facility, FacilityKind, Landing } from './facilities';
+export { PITCHER_AURAS, pitcherOf } from './pitchers';
+export type { PitcherAura, PitcherProfile } from './pitchers';
