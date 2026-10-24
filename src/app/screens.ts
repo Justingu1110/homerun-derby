@@ -1,5 +1,5 @@
 import { difficulty, type BestScore, type Difficulty, type RoundState } from '../core';
-import { formatDistance, formatMultiplier } from '../render/hud';
+import { formatDistance, formatMultiplier } from '../presentation/format';
 import { keepTapsFromSwing } from './dom';
 
 /**

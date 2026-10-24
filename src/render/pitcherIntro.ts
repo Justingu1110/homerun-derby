@@ -1,6 +1,6 @@
 import type { PerspectiveCamera } from 'three';
-import { PITCH_TYPE_NAME, type Difficulty } from '../core';
-import { formatMultiplier } from './hud';
+import type { Difficulty } from '../core';
+import { describePitchTypes, formatMultiplier } from '../presentation/format';
 import { MOUND } from './poses';
 import { BATTER_VIEW, setLens } from './view';
 
@@ -69,7 +69,7 @@ export function createIntroCard(root: HTMLElement): IntroCard {
     show(d) {
       q('.intro-level').textContent = d.name;
       q('.intro-name').textContent = d.pitcher;
-      q('.intro-info').textContent = `倍率 ${formatMultiplier(d.multiplier)}・${d.types.map((t) => PITCH_TYPE_NAME[t]).join('／')}`;
+      q('.intro-info').textContent = `倍率 ${formatMultiplier(d.multiplier)}・${describePitchTypes(d)}`;
       card.classList.add('is-on');
     },
     hide() {

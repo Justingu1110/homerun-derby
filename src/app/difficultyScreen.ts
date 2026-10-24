@@ -1,9 +1,6 @@
-import { DIFFICULTIES, PITCH_TYPE_NAME, SPEED_LEVEL_NAME, type Difficulty, type DifficultyId } from '../core';
-import { formatMultiplier } from '../render/hud';
+import { DIFFICULTIES, SPEED_LEVEL_NAME, type Difficulty, type DifficultyId } from '../core';
+import { describePitchTypes, formatMultiplier } from '../presentation/format';
 import type { DifficultyStorage } from './difficultyStorage';
-
-/** The 球種 of a 難度 in a few words, e.g. 「直球／變速球／曲球」. */
-export const describePitchTypes = (d: Difficulty) => d.types.map((t) => PITCH_TYPE_NAME[t]).join('／');
 
 /** The 球速 levels of a 難度, e.g. 「慢速」 or 「慢＋中＋快速」. */
 export const describeSpeeds = (d: Difficulty) => `${d.speeds.map((s) => SPEED_LEVEL_NAME[s]).join('＋')}速`;
