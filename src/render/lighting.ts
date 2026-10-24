@@ -8,7 +8,9 @@ import { FIELD } from '../core';
  * the bat) keeps casting, and every other lit mesh receives.
  */
 export function enablePlayerShadows(renderer: WebGLRenderer, scene: Scene): void {
-  let sun: DirectionalLight | null = null;
+  // The stadium names its sun 'sun' (#16); fall back to the first directional light.
+  const named = scene.getObjectByName('sun');
+  let sun: DirectionalLight | null = named instanceof DirectionalLight ? named : null;
   scene.traverse((o) => {
     if (!sun && o instanceof DirectionalLight) sun = o;
   });
