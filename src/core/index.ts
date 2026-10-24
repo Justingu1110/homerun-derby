@@ -2,6 +2,7 @@
 export { FIELD, fieldPoint } from './field';
 export type { FieldPoint } from './field';
 export { TUNING } from './tuning';
+export { metresToFeet } from './units';
 export { parseBestScore, readBestScore } from './bestScore';
 export type { BestScore, BestScoreStorage } from './bestScore';
 export { DEFAULT_DIFFICULTY, DIFFICULTIES, difficulty, homeRunPoints, parseDifficultyId } from './difficulty';
