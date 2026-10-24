@@ -218,7 +218,7 @@ export function createAtBat(
     if (phase.name !== 'intro') return;
     const { then } = phase;
     introCard?.hide();
-    pitcher.root.rotation.y = 0;
+    pitcher.setTurn(0, 0);
     batterCamera(camera);
     phase = { name: 'idle' };
     then(atMs);
@@ -283,7 +283,7 @@ export function createAtBat(
         if (tS >= INTRO.durS) endIntro(now);
         else {
           introCamera(camera, tS, reduced());
-          pitcher.root.rotation.y = introSway(tS, reduced());
+          pitcher.setTurn(1, introSway(tS, reduced()));
           if (tS >= INTRO.cardOffS) introCard?.hide();
         }
       }
