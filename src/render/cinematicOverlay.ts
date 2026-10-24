@@ -7,7 +7,7 @@
  * every frame and every style is computed from timestamps it set, so the layer
  * follows the same clock as the 3D scene (and a paused test clock).
  */
-import { metresToFeet } from '../core';
+import { distanceParts } from '../presentation/format';
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const smooth = (v: number) => v * v * (3 - 2 * v);
@@ -70,7 +70,7 @@ export function createCinematicOverlay(root: HTMLElement): CinematicOverlay {
   root.innerHTML =
     '<div class="cine-bar cine-bar-top"></div><div class="cine-bar cine-bar-bottom"></div>' +
     '<div class="cine-speed"></div><div class="cine-flash"></div><div class="cine-pop"></div><div class="cine-pop cine-pop-low"></div>' +
-    '<div class="cine-distance"><small>飛距離</small><b>0</b><span>ft</span></div>' +
+    '<div class="cine-distance"><small>飛距離</small><b>0</b><span></span></div>' +
     '<div class="cine-skip">點畫面跳過 ▶▶</div>';
   const q = (s: string) => root.querySelector<HTMLElement>(s)!;
   const bars = [q('.cine-bar-top'), q('.cine-bar-bottom')];
@@ -79,6 +79,7 @@ export function createCinematicOverlay(root: HTMLElement): CinematicOverlay {
   const popEls = [...root.querySelectorAll<HTMLElement>('.cine-pop')];
   const dist = q('.cine-distance');
   const distN = q('.cine-distance b');
+  const distUnit = q('.cine-distance span');
   const skip = q('.cine-skip');
 
   let bar: Span | null = null;
@@ -118,7 +119,9 @@ export function createCinematicOverlay(root: HTMLElement): CinematicOverlay {
       popping[line] = { text, small, atMs };
     },
     distance(metres, onMs, offMs) {
-      distSpan = { feet: metresToFeet(metres), onMs, offMs };
+      const { value, unit } = distanceParts(metres);
+      distSpan = { feet: value, onMs, offMs };
+      distUnit.textContent = unit;
     },
     clear() {
       bar = lines = hint = distSpan = null;
