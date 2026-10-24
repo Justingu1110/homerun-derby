@@ -83,6 +83,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 .opt[aria-pressed="true"]{background:var(--ink);color:var(--night);border-color:var(--ink)}
 .opt:focus-visible,.play:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .play{margin-left:auto;font-size:15px;font-weight:900;padding:8px 16px;border-radius:8px;border:0;background:var(--gold);color:#1d1400;box-shadow:0 3px 0 #a87800}
+.panel.min > :not(.mini){display:none}
+.panel:not(.min) .mini .play{display:none}
+.mini .lab{min-width:0;color:var(--ink)}
 .play:active{transform:translateY(2px);box-shadow:0 1px 0 #a87800}
 .note{font-size:11px;line-height:1.5;color:var(--muted)}
 @media (prefers-reduced-motion:reduce){#speed.on{animation:none}#pop.show{animation-duration:.01s;opacity:1}}
@@ -102,7 +105,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 <div id="introCard"><span class="lv" id="icLv">地獄</span><span class="nm" id="icName">山本由伸</span><span class="mu" id="icMu">倍率 ×2.5</span></div>
 <div class="skip">點畫面跳過 ▶▶</div>
 
-<section class="panel" id="panel">
+<section class="panel min" id="panel">
+  <div class="row mini"><button class="opt" id="optPanel" aria-expanded="false">選項 ▴</button><span class="lab" id="miniDiff"></span><button class="play" id="play2">▶ 重播</button></div>
   <div class="row"><span class="lab">難度</span><div class="seg" id="diff"></div></div>
   <div class="row"><span class="lab">落點</span><div class="seg" id="tgt"></div></div>
   <div class="row">
@@ -131,6 +135,7 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---------- renderer / scene
 const renderer = new THREE.WebGLRenderer({ canvas: $('#c'), antialias: true });
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1500);
@@ -163,8 +168,11 @@ const box = (w, h, d, m) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
   scene.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false })));
 }
 scene.fog = new THREE.Fog('#b9707a', 240, 800);
-scene.add(new THREE.HemisphereLight('#d6e2ff', '#3a5a2a', 0.85));
-const sun = new THREE.DirectionalLight('#ffd7b0', 0.9); sun.position.set(-80, 120, 70); scene.add(sun);
+scene.add(new THREE.HemisphereLight('#e4ecff', '#4a6a3a', 1.0));
+const sun = new THREE.DirectionalLight('#fff0dc', 1.25); sun.position.set(-60, 110, 60); scene.add(sun);
+sun.castShadow = true; sun.target.position.set(0, 0, -9); scene.add(sun.target);
+Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 16, bottom: -16, near: 10, far: 400 });
+sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0006; sun.shadow.radius = 3;
 
 // ---------- field
 {
@@ -385,7 +393,71 @@ function pawa(c) {
   return { g, torso, head, feet, hands };
 }
 
-const batter = pawa({ shirt: '#f7f7f7', pants: '#f7f7f7', cap: '#d6322b', glove: '#ffffff', num: '55', trim: '#d6322b', flap: true });
+const sm = (c, rough = 0.62, metal = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: metal });
+function uniformTex(c) {
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512; const x = cv.getContext('2d');
+  x.fillStyle = c.shirt; x.fillRect(0, 0, 1024, 512);
+  if (c.stripes) { x.fillStyle = c.stripes; for (let i = 0; i < 1024; i += 34) x.fillRect(i, 0, 4, 512); }
+  x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+  // front (u = .25): team script; back (u = .75): name over number
+  x.font = 'italic 900 92px "Bungee", "Noto Sans TC", sans-serif'; x.lineWidth = 10; x.strokeStyle = c.trim2 || '#ffffff'; x.fillStyle = c.trim;
+  x.strokeText(c.team || 'Moons', 256, 250); x.fillText(c.team || 'Moons', 256, 250);
+  x.font = '900 46px "Bungee", "Noto Sans TC", sans-serif'; x.fillText(c.nameEn || '', 768, 175);
+  x.font = '900 150px "Bungee", "Noto Sans TC", sans-serif'; x.lineWidth = 12; x.strokeText(c.num, 768, 300); x.fillText(c.num, 768, 300);
+  const t = new THREE.CanvasTexture(cv); t.anisotropy = 4; return t;
+}
+function pawa2(c) {
+  const g = new THREE.Group(), torso = new THREE.Group(); torso.position.y = 0.36; g.add(torso);
+  const bw = { slim: 0.88, normal: 1, big: 1.22 }[c.build || 'normal'];
+  const body = new THREE.Group(); body.scale.set(bw, c.build === 'big' ? 1.08 : 1, bw); torso.add(body);
+  const jersey = new THREE.Mesh(new THREE.SphereGeometry(0.33, 40, 28), new THREE.MeshStandardMaterial({ map: uniformTex(c), roughness: 0.7 }));
+  jersey.scale.set(1, 1.02, 0.9); jersey.position.y = 0.2; body.add(jersey);
+  const pants = new THREE.Mesh(new THREE.SphereGeometry(0.31, 36, 24, 0, Math.PI * 2, Math.PI * 0.42, Math.PI * 0.58), sm(c.pants, 0.75));
+  pants.scale.set(1.02, 0.95, 0.92); pants.position.y = 0.08; body.add(pants);
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.305, 0.024, 10, 40), sm('#1d1d26', 0.5)); belt.rotation.x = Math.PI / 2; belt.scale.set(1, 0.9, 1); belt.position.y = 0.06; body.add(belt);
+  const head = new THREE.Group(); head.position.y = c.build === 'big' ? 0.7 : 0.64; torso.add(head);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.4, 40, 30), sm('#ffd6b0', 0.75)); skull.scale.set(1.04, 0.97, 1); head.add(skull);
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.41, 32, 16, Math.PI * 0.85, Math.PI * 1.3, Math.PI * 0.3, Math.PI * 0.3), sm(c.hair || '#2a1d16', 0.8));
+  head.add(hair);   // back and sides only, below the cap
+  [-1, 1].forEach(sx => {
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 10), sm('#f5c79e', 0.75)); ear.scale.set(0.5, 1, 0.8); ear.position.set(sx * 0.405, -0.02, 0); head.add(ear);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.052, 20, 14), new THREE.MeshStandardMaterial({ color: '#141018', roughness: 0.25 }));
+    eye.scale.set(0.82, c.fierce ? 1.05 : 1.6, 0.4); eye.position.set(sx * 0.14, 0.02, 0.375); head.add(eye);
+    const hl = new THREE.Mesh(new THREE.SphereGeometry(0.017, 10, 8), new THREE.MeshBasicMaterial({ color: '#ffffff' })); hl.position.set(sx * 0.14 + 0.018, 0.065, 0.395); head.add(hl);
+    const brow = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 8), sm(c.hair || '#2a1d16', 0.8)); brow.scale.set(1, 0.26, 0.3);
+    brow.rotation.z = sx * (c.fierce ? -0.45 : 0.12); brow.position.set(sx * 0.14, c.fierce ? 0.11 : 0.15, 0.37); head.add(brow);
+  });
+  const ink = sm('#141018', 0.4);
+  if (c.glasses) [-1, 1].forEach(sx => { const r = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 8, 24), ink); r.position.set(sx * 0.14, 0.02, 0.395); head.add(r); });
+  if (c.beard === 'mustache') { const m = new THREE.Mesh(new THREE.SphereGeometry(0.06, 14, 10), sm(c.hair || '#2a1d16', 0.8)); m.scale.set(1.8, 0.45, 0.45); m.position.set(0, -0.12, 0.37); head.add(m); }
+  if (c.beard === 'beard') { const b = new THREE.Mesh(new THREE.SphereGeometry(0.402, 28, 14, Math.PI * 0.05, Math.PI * 0.9, Math.PI * 0.6, Math.PI * 0.3), sm(c.hair || '#2a1d16', 0.85)); head.add(b); }
+  // cap or helmet
+  const capMat = c.helmet ? sm(c.cap, 0.18, 0.15) : sm(c.cap, 0.7);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(c.helmet ? 0.445 : 0.425, 40, 20, 0, Math.PI * 2, 0, Math.PI * 0.5), capMat); dome.position.y = 0.03; head.add(dome);
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.035, 28, 1, false, 0, Math.PI), capMat);
+  brim.rotation.y = -Math.PI / 2; brim.scale.set(1.0, 1, c.helmet ? 0.55 : 0.8); brim.position.set(0, 0.06, 0.32); brim.rotation.x = -0.12; head.add(brim);
+  if (c.helmet) { const flap = new THREE.Mesh(new THREE.SphereGeometry(0.2, 20, 14), capMat); flap.scale.set(0.45, 1, 0.95); flap.position.set(0.39, -0.08, 0.02); head.add(flap); }
+  else { const em = new THREE.Mesh(new THREE.CircleGeometry(0.075, 24), new THREE.MeshBasicMaterial({ color: c.trim })); em.position.set(0, 0.25, 0.36); em.rotation.x = -0.62; head.add(em); }
+  // big two-tone shoes
+  const feet = [-1, 1].map(sx => {
+    const f = new THREE.Group();
+    const upper = new THREE.Mesh(new THREE.SphereGeometry(0.12, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), sm(c.shoe || '#1d2350', 0.5)); upper.scale.set(1.15, 1.0, 1.85); f.add(upper);
+    const toe = new THREE.Mesh(new THREE.SphereGeometry(0.1, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), sm('#f4f4f4', 0.45)); toe.scale.set(1.1, 0.9, 0.9); toe.position.z = 0.12; f.add(toe);
+    const sole = new THREE.Mesh(new THREE.CylinderGeometry(0.135, 0.135, 0.03, 24), sm('#f4f4f4', 0.6)); sole.scale.set(1.02, 1, 1.75); sole.position.y = 0.012; f.add(sole);
+    f.position.set(sx * 0.16, 0.0, 0.05); g.add(f); return f;
+  });
+  // big round hands; the glove is bigger, with a darker web
+  const hands = [0, 1].map(i => {
+    const isGlove = c.gloveHand === i;
+    const h = new THREE.Mesh(new THREE.SphereGeometry(isGlove ? 0.19 : 0.15, 28, 20), sm(isGlove ? c.glove : (c.batGlove || '#f6f0e6'), isGlove ? 0.55 : 0.7));
+    if (isGlove) { h.scale.set(1, 1.08, 0.78); const web = new THREE.Mesh(new THREE.SphereGeometry(0.12, 18, 12), sm('#5a3418', 0.6)); web.scale.set(0.9, 0.9, 0.5); web.position.set(0, 0.05, 0.12); h.add(web); }
+    return h;
+  });
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  hands.forEach(h => h.traverse(o => { if (o.isMesh) o.castShadow = true; }));
+  return { g, torso, head, feet, hands };
+}
+const batter = pawa2({ shirt: '#f7f7f7', stripes: '#c9cfe0', pants: '#f2f2f2', cap: '#1f2a6b', glove: '#ffffff', num: '55', nameEn: 'GU', team: 'Moons', trim: '#1f2a6b', helmet: true, shoe: '#1f2a6b', hair: '#2a1d16' });
 batter.g.position.set(-0.75, 0, 0.2); batter.g.rotation.y = Math.PI / 2; scene.add(batter.g);
 batter.hands.forEach(h => scene.add(h));
 
@@ -404,7 +476,7 @@ const DIFFS = [
 ];
 const MPH = { 直球: { slow: [78, 82], mid: [86, 90], fast: [94, 99] }, 變速球: { slow: [68, 72], mid: [76, 80], fast: [84, 88] }, 曲球: { slow: [62, 66], mid: [70, 74], fast: [78, 82] } };
 DIFFS.forEach(d => {
-  const p = pawa(d.look); p.g.position.set(0, 0.3, -18.4); p.g.visible = false; scene.add(p.g);
+  const p = pawa2({ gloveHand: 1, ...d.look }); p.g.position.set(0, 0.3, -18.4); p.g.visible = false; scene.add(p.g);
   p.hands.forEach(h => p.g.add(h)); p.hands[1].position.set(0.25, 0.82, 0.3);
   d.pitcher = p;
 });
@@ -412,72 +484,77 @@ let pitcher, diff;
 function useDiff(key) {
   DIFFS.forEach(d => d.pitcher.g.visible = d.key === key);
   diff = DIFFS.find(d => d.key === key); pitcher = diff.pitcher; pitcher.g.rotation.y = 0;
+  $('#miniDiff').textContent = `${diff.label}・${diff.name}`;
   aura.setLevel(diff.fx); measureRelease();
 }
 
-const batGeo = new THREE.CylinderGeometry(0.055, 0.028, 1.0, 8); batGeo.translate(0, 0.5, 0);
-const bat = new THREE.Mesh(batGeo, fmat('#d9a55b')); scene.add(bat);
+const batGeo = new THREE.LatheGeometry([[0, 0], [0.034, 0], [0.036, 0.02], [0.024, 0.05], [0.024, 0.32], [0.04, 0.55], [0.058, 0.78], [0.064, 0.93], [0.05, 0.99], [0, 1.0]].map(([x, y]) => new THREE.Vector2(x * 1.25, y * 1.05)), 24);
+const bat = new THREE.Mesh(batGeo, new THREE.MeshStandardMaterial({ color: '#e8cf9a', roughness: 0.45 })); bat.castShadow = true; scene.add(bat);
 const UP = new THREE.Vector3(0, 1, 0);
 const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3(), hand = new THREE.Vector3();
 function batDir(yaw, elev, out) { const y = yaw * D, e = elev * D; return out.set(Math.sin(y) * Math.cos(e), Math.sin(e), Math.cos(y) * Math.cos(e)); }
 // keyframe track: [[time, [values…]], …]; eased between keys unless linear
-function track(keys, t, linear) {
+function track(keys, t) {
+  // Catmull-Rom through the keys (time-aware tangents), so motion flows through each pose instead of stopping on it
+  const n = keys.length;
   if (t <= keys[0][0]) return keys[0][1];
-  for (let i = 0; i < keys.length - 1; i++) {
-    const [t0, a] = keys[i], [t1, b] = keys[i + 1];
-    if (t <= t1) { const u = linear ? (t - t0) / (t1 - t0) : smooth((t - t0) / (t1 - t0)); return a.map((v, j) => v + (b[j] - v) * u); }
-  }
-  return keys[keys.length - 1][1];
+  if (t >= keys[n - 1][0]) return keys[n - 1][1];
+  let i = 0; while (t > keys[i + 1][0]) i++;
+  const [t0, p0] = keys[i], [t1, p1] = keys[i + 1], dt = t1 - t0, u = (t - t0) / dt;
+  const tan = k => (k <= 0 || k >= n - 1) ? null : keys[k + 1][1].map((v, j) => (v - keys[k - 1][1][j]) / (keys[k + 1][0] - keys[k - 1][0]));
+  const m0 = tan(i), m1 = tan(i + 1), u2 = u * u, u3 = u2 * u;
+  const h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u, h01 = -2 * u3 + 3 * u2, h11 = u3 - u2;
+  return p0.map((v, j) => h00 * v + h10 * dt * (m0 ? m0[j] : 0) + h01 * p1[j] + h11 * dt * (m1 ? m1[j] : 0));
 }
 function applyBat(h, yaw, elev) {
   batDir(yaw, elev, tmp);
   if (!batFree) { bat.position.copy(h); bat.quaternion.setFromUnitVectors(UP, tmp); }
-  batter.hands[0].position.copy(h).addScaledVector(tmp, 0.04);
-  batter.hands[1].position.copy(h).addScaledVector(tmp, 0.16);
+  batter.hands[0].position.copy(h).addScaledVector(tmp, 0.05);
+  batter.hands[1].position.copy(h).addScaledVector(tmp, 0.24);
 }
 
 // ---- batter: waggle → load (hands back, front knee up) → stride → swing → high finish
 const PITCH_REL = 1.6;            // pitcher releases the ball this long into the pitch shot
-const ST_HAND = [[0, [-0.48, 0.95, 0.58]], [0.7, [-0.48, 0.95, 0.58]], [1.3, [-0.42, 1.12, 0.82]], [1.95, [-0.46, 1.06, 0.7]]];
-const ST_FRONT = [[0, [0.15, 0.06, 0.04]], [1.0, [0.15, 0.06, 0.04]], [1.4, [0.22, 0.4, 0.2]], [1.95, [0.55, 0.06, 0.04]]];
+const ST_HAND = [[0, [-0.42, 0.98, 0.72]], [0.7, [-0.42, 0.98, 0.72]], [1.3, [-0.38, 1.1, 0.88]], [1.95, [-0.4, 1.04, 0.8]]];
+const ST_FRONT = [[0, [0.16, 0, 0.05]], [1.0, [0.16, 0, 0.05]], [1.4, [0.22, 0.34, 0.2]], [1.95, [0.58, 0, 0.05]]];
 function setStance(t) {
   const load = smooth(clamp01((t - 0.7) / 0.6)), calm = 1 - load, stride = smooth(clamp01((t - 1.4) / 0.55));
   const w = Math.sin(t * 5.5), w2 = Math.cos(t * 5.5);
   const h = track(ST_HAND, t); hand.set(h[0] + 0.035 * w2 * calm, h[1] + 0.035 * w * calm, h[2]);
   applyBat(hand, 10 + 8 * load + 20 * w * calm, 58 - 10 * load + 8 * w2 * calm);       // bat waggle, then still
   batter.torso.rotation.set(0.14 - 0.06 * load, -0.15 - 0.45 * load + 0.25 * stride, 0.2 * load - 0.12 * stride); // lean over the plate, rock back, then forward
-  batter.torso.position.y = 0.34 - 0.05 * load + 0.02 * w * calm;
+  batter.torso.position.y = 0.36 - 0.05 * load + 0.02 * w * calm;
   batter.head.rotation.set(-batter.torso.rotation.x, -batter.torso.rotation.y * 0.9, -batter.torso.rotation.z * 0.8);
   batter.g.position.z = 0.2 + 0.05 * load - 0.13 * stride;                            // weight back, then forward
   batter.feet[1].position.set(...track(ST_FRONT, t));
-  batter.feet[0].position.set(-0.15, 0.06, 0.05); batter.feet[0].rotation.set(0, 0, 0);
+  batter.feet[0].position.set(-0.16, 0, 0.05); batter.feet[0].rotation.set(0, 0, 0);
 }
-const SW_HAND = [[0, [-0.48, 1.04, 0.66]], [0.15, [-0.47, 0.95, 0.46]], [0.3, [-0.43, 0.86, 0.28]], [0.4, [-0.4, 0.82, 0.18]],
-                 [0.5, [-0.28, 0.85, 0.04]], [0.6, [-0.3, 0.93, -0.1]], [0.8, [-0.33, 1.12, -0.27]], [1, [-0.35, 1.25, -0.35]]];
+const SW_HAND = [[0, [-0.4, 1.04, 0.8]], [0.15, [-0.4, 0.95, 0.6]], [0.3, [-0.32, 0.86, 0.38]], [0.4, [-0.2, 0.8, 0.2]],
+                 [0.5, [-0.1, 0.86, 0.02]], [0.6, [-0.16, 0.98, -0.16]], [0.8, [-0.28, 1.25, -0.32]], [1, [-0.34, 1.42, -0.34]]];
 const SW_BAT = [[0, [15, 50]], [0.15, [24, 42]], [0.3, [52, 20]], [0.4, [90, 5]], [0.5, [122, 8]], [0.6, [152, 16]], [0.8, [195, 45]], [1, [220, 67]]];
 const SW_TWIST = [[0, [-0.4]], [0.2, [-0.1]], [0.4, [1.0]], [0.7, [1.55]], [1, [1.75]]];
 function setSwing(a) {
-  const h = track(SW_HAND, a, true), [yaw, elev] = track(SW_BAT, a, true), twist = track(SW_TWIST, a, true)[0];
+  const h = track(SW_HAND, a), [yaw, elev] = track(SW_BAT, a), twist = track(SW_TWIST, a)[0];
   hand.set(h[0], h[1], h[2]); applyBat(hand, yaw, elev);
   batter.torso.rotation.set(0, twist, 0.06 - 0.2 * clamp01((a - 0.4) / 0.6));
   batter.torso.position.y = 0.325 - 0.03 * Math.sin(Math.PI * clamp01(a / 0.7));
   // eyes stay on the ball until contact, then follow it up
   batter.head.rotation.set(-0.35 * smooth(clamp01((a - 0.4) / 0.4)), a < 0.4 ? -twist * 0.75 : -twist * 0.75 + (twist - 1.0) * 0.4, 0);
-  batter.feet[1].position.set(0.55, 0.06, 0.04); batter.g.position.z = 0.07;
+  batter.feet[1].position.set(0.58, 0, 0.05); batter.g.position.z = 0.07;
   const piv = smooth(clamp01((a - 0.2) / 0.45));
-  batter.feet[0].rotation.set(0.5 * piv, 1.1 * piv, 0); batter.feet[0].position.set(-0.13, 0.06 + 0.05 * piv, 0.05);
+  batter.feet[0].rotation.set(0.5 * piv, 1.1 * piv, 0); batter.feet[0].position.set(-0.14, 0.05 * piv, 0.05);
 }
-const K = new THREE.Vector3(...track(SW_HAND, 0.4, true)).addScaledVector(batDir(90, 5, new THREE.Vector3()), 0.72); // contact point
+const K = new THREE.Vector3(...track(SW_HAND, 0.4)).addScaledVector(batDir(90, 5, new THREE.Vector3()), 0.62); // contact point
 const R = new THREE.Vector3();    // release point, measured from the pitcher's hand
 let pQ = 0;
 function pitchPos(p, out) { out.lerpVectors(R, K, p); out.y -= 0.35 * Math.sin(Math.PI * p); return out; }
 
 // ---- pitcher: set → high leg kick (closing) → stride & hand split → hips/shoulders fire → release → follow-through
-const P_BALL  = [[0, [0.05, 0.85, 0.28]], [0.35, [0.05, 0.88, 0.28]], [0.9, [0.0, 1.05, 0.18]], [1.12, [-0.42, 0.55, -0.5]], [1.36, [-0.55, 1.5, -0.38]],
+const P_BALL  = [[0, [0.05, 0.6, 0.3]], [0.35, [0.05, 0.63, 0.3]], [0.9, [0.0, 0.8, 0.22]], [1.12, [-0.42, 0.55, -0.5]], [1.36, [-0.55, 1.5, -0.38]],
                  [PITCH_REL, [-0.25, 1.5, 0.72]], [1.82, [0.3, 0.4, 0.62]], [2.4, [0.3, 0.45, 0.5]]];
-const P_GLOVE = [[0, [0.1, 0.84, 0.3]], [0.9, [0.06, 1.05, 0.2]], [1.2, [0.45, 1.15, 0.7]], [1.48, [0.38, 0.95, 0.5]], [PITCH_REL, [0.15, 0.85, 0.15]], [2.4, [0.22, 0.75, 0.25]]];
-const P_LFOOT = [[0, [0.15, 0.06, 0.05]], [0.35, [0.15, 0.06, 0.05]], [0.75, [-0.22, 0.72, 0.05]], [1.0, [-0.18, 0.64, 0.0]], [1.28, [0.22, 0.16, 0.75]], [1.4, [0.22, 0.06, 0.85]]];
-const P_RFOOT = [[0, [-0.15, 0.06, 0.05]], [1.5, [-0.15, 0.06, 0.05]], [1.72, [-0.15, 0.2, -0.15]], [1.95, [-0.2, 0.55, -0.35]], [2.25, [-0.05, 0.06, 0.55]]];
+const P_GLOVE = [[0, [0.1, 0.6, 0.32]], [0.9, [0.06, 0.8, 0.24]], [1.2, [0.45, 1.15, 0.7]], [1.48, [0.38, 0.95, 0.5]], [PITCH_REL, [0.18, 0.62, 0.18]], [2.4, [0.24, 0.58, 0.28]]];
+const P_LFOOT = [[0, [0.15, 0.0, 0.05]], [0.35, [0.15, 0.0, 0.05]], [0.75, [-0.22, 0.72, 0.05]], [1.0, [-0.18, 0.64, 0.0]], [1.28, [0.22, 0.16, 0.75]], [1.4, [0.22, 0.0, 0.85]]];
+const P_RFOOT = [[0, [-0.15, 0.0, 0.05]], [1.5, [-0.15, 0.0, 0.05]], [1.72, [-0.15, 0.2, -0.15]], [1.95, [-0.2, 0.55, -0.35]], [2.25, [-0.05, 0.0, 0.55]]];
 const P_TURN  = [[0, [0]], [0.4, [0]], [0.9, [-1.25]], [1.3, [-1.1]], [PITCH_REL, [0.38]], [2.0, [0.55]], [2.4, [0.4]]];
 const P_LEAN  = [[0, [0]], [0.9, [-0.1]], [1.3, [-0.22]], [PITCH_REL, [0.45]], [1.85, [0.75]], [2.4, [0.4]]];
 const P_BODY  = [[0, [0, 0, 1]], [0.9, [0.1, 0, 1.08]], [1.35, [-0.14, 0.22, 1]], [PITCH_REL, [-0.18, 0.42, 0.9]], [1.8, [-0.18, 0.5, 1]], [2.4, [-0.06, 0.55, 1]]];
@@ -639,7 +716,8 @@ const camChase = new THREE.Vector3(), lookChase = new THREE.Vector3();
 
 function flightPos(f, out) { out.lerpVectors(K, T, f); out.y = K.y + (T.y - K.y) * f + 4 * H * f * (1 - f); return out; }
 function setCam(px, py, pz, lx, ly, lz) { camera.position.set(px, py, pz); camera.lookAt(lx, ly, lz); }
-const C0 = [0.35, 2.3, 5.6, -0.15, 0.9, -18];
+const C0 = [0.05, 1.7, 4.6, 0.1, 0.15, -18];
+const BATTER_FOV = 44;
 
 function doImpact(silent) {
   if (impactDone) return; impactDone = true;
@@ -647,7 +725,7 @@ function doImpact(silent) {
   ballFree = true;
   if (tgt.kind === 'stands') {
     ballVel = dir.clone().multiplyScalar(5).add(new THREE.Vector3(0, 6, 0));
-    if (!silent) { pop('落入觀眾席', true); }
+    if (!silent) { pop('落入觀眾席'); }
   } else if (opt.brk) {
     shatter(tgt);
     ballVel = dir.clone().multiplyScalar(22).add(new THREE.Vector3(0, 2, 0));
@@ -657,7 +735,7 @@ function doImpact(silent) {
   } else {
     ballVel = dir.clone().multiplyScalar(-9).add(new THREE.Vector3(0, 4, 0));
     burst(T, { n: 30, speed: 5, size: 0.5, life: 0.5, colors: ['#ffffff', '#ffd23d'], gravity: 10 });
-    if (!silent) { pop(tgt.hit, true); shake(0.45); }
+    if (!silent) { pop(tgt.hit); shake(0.45); }
   }
 }
 
@@ -698,7 +776,7 @@ function introShot() {
     },
     update(t) {
       const u = smooth(clamp01(t / 2.8)), a = -0.55 + 1.1 * u;
-      camera.position.set(Math.sin(a) * 3.3, 1.0 + 0.35 * u, -18.4 + Math.cos(a) * 3.3); camera.lookAt(0, 1.3, -18.4);
+      camera.position.set(Math.sin(a) * 4.4, 0.95 + 0.3 * u, -18.4 + Math.cos(a) * 4.4); camera.lookAt(0, 0.85, -18.4);
       setPitcher(0); pitcher.torso.rotation.y = 0.18 * Math.sin(t * 3);
       if (t > 2.45) $('#introCard').classList.remove('show');
     } };
@@ -708,7 +786,7 @@ function buildShots() {
   const list = [];
   list.push({ chip: 0, cap: ['1x', '打者背後視角：投手抬腿、跨步、出手；打者晃棒、拉棒、抬腳、跨步。'], dur: PITCH_REL + 0.7,
     update(t) {
-      setCam(...C0); setPitcher(t); setStance(t);
+      setCam(...C0); if (camera.fov !== BATTER_FOV) { camera.fov = BATTER_FOV; camera.updateProjectionMatrix(); } setPitcher(t); setStance(t);
       if (t < PITCH_REL) pitcher.hands[0].getWorldPosition(ball.position); else { pitchPos(pQ * (t - PITCH_REL) / 0.7, ball.position); $('#pitchInfo').classList.add('show'); }
     } });
   list.push({ chip: 1, rate: sh ? 1.5 : 1, cap: ['0.1x', `慢動作揮棒特寫（${SWING_CAMS[cams.swing].label}）：擊中瞬間停格、閃光、畫面震動。`], dur: 1.4, cine: true,
@@ -800,7 +878,8 @@ let shots = [], cur = -1, st = 0, hit = false;
 function enter(i) {
   cur = i; st = 0;
   const s = shots[i];
-  if (!s) { cur = -1; body.classList.remove('cine'); ballVisible = 'hand'; ballFree = false; $('#caption').innerHTML = '流程結束。按「重播」再看一次，或換一個落點。'; markChips(-1, true); return; }
+  if (!s) { cur = -1; body.classList.remove('cine'); ballVisible = 'hand'; ballFree = false; $('#caption').innerHTML = '流程結束。按「重播」再看一次，或換一個落點。'; markChips(-1); return; }
+  camera.fov = innerWidth < innerHeight ? 64 : 48; camera.updateProjectionMatrix();
   s.enter && s.enter();
   if (s.cine && s.chip >= 1) $('#pitchInfo').classList.remove('show');
   body.classList.toggle('cine', !!s.cine);
@@ -867,6 +946,11 @@ $('#diff').addEventListener('click', e => {
 $('#optCams').addEventListener('click', play);
 toggle('#optMotion', 'motion', play);
 $('#play').addEventListener('click', play);
+$('#play2').addEventListener('click', play);
+$('#optPanel').addEventListener('click', () => {
+  const min = $('#panel').classList.toggle('min');
+  $('#optPanel').textContent = min ? '選項 ▴' : '收起 ▾'; $('#optPanel').setAttribute('aria-expanded', String(!min)); resize();
+});
 $('#c').addEventListener('pointerdown', skip);
 
 // ---------- loop
@@ -879,7 +963,7 @@ function frame(now) {
     const s = shots[cur]; st += sdt * (s.rate || 1);
     s.update(Math.min(st, s.dur), sdt * (s.rate || 1));
     if (st >= s.dur) enter(cur + 1);
-  } else { setCam(...C0); }
+  } else { setCam(...C0); if (camera.fov !== BATTER_FOV) { camera.fov = BATTER_FOV; camera.updateProjectionMatrix(); } }
 
   aura.update(sdt);
   if (batFree) {
@@ -953,6 +1037,7 @@ function frame(now) {
   } else renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
+scene.traverse(o => { if (o.isMesh && o.material && o.material.type === 'MeshLambertMaterial') o.receiveShadow = true; });
 useDiff('hell');
 resize(); reset(); setCam(...C0);
 requestAnimationFrame(frame);
