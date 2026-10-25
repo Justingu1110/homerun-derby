@@ -108,7 +108,7 @@ body {
   right: 12px;
   top: calc(10px + env(safe-area-inset-top));
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: auto auto 1fr auto;
   align-items: center;
   gap: 10px;
   padding: 6px 12px;
@@ -169,6 +169,39 @@ body {
   background: #ff4d3d;
   border-color: #ff4d3d;
   box-shadow: 0 0 6px #ff4d3d;
+}
+
+/* ⏸ at the right end of the top bar: the only HUD element that takes taps. */
+.hud-pause {
+  display: block;
+  pointer-events: auto;
+  width: 40px;
+  height: 40px;
+  margin: -4px -6px -4px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 20px;
+  line-height: 40px;
+  color: #fff;
+  background: #ffffff26;
+  box-shadow: inset 0 0 0 2px #ffffff55;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.hud-pause[hidden] {
+  visibility: hidden;
+}
+
+.hud-pause:active {
+  transform: translateY(2px);
+}
+
+/* While paused the HUD's own animations (pops) stand still too. */
+body.is-paused #hud * {
+  animation-play-state: paused;
 }
 
 /* ── 標題 / 結算 screens ──────────────────────────────────────────────── */

@@ -195,3 +195,28 @@ describe('最高分 read back from storage', () => {
     expect(parseBestScore(raw)).toBeNull();
   });
 });
+
+describe('中途結束一局 (quit)', () => {
+  it('accepts no more pitches or swings once the round is quit, even with a pitch in flight', () => {
+    const round = startRound({ random: fixed(0.5), difficulty: 'easy' });
+    pitchAndSwing(round, PERFECT);
+    const pitch = round.nextPitch();
+    round.quit();
+    expect(round.state()).toMatchObject({ over: true, outs: 0, score: 100 });
+    expect(() => round.swing(pitch.contactMs)).toThrow();
+    expect(() => round.tick(Infinity)).toThrow();
+    expect(() => round.nextPitch()).toThrow();
+    expect(round.state()).toMatchObject({ outs: 0, score: 100, homeRuns: 1 });
+  });
+
+  it('a quit round never writes the best score, even when its score beats it', () => {
+    const { storage, saved } = memoryStorage({ score: 100, totalDistance: 150 });
+    const round = startRound({ random: fixed(0.5), difficulty: 'easy', storage });
+    for (let i = 0; i < 3; i++) pitchAndSwing(round, PERFECT);
+    round.quit();
+    round.quit();
+    expect(round.state()).toMatchObject({ over: true, score: 300, newBest: false });
+    expect(saved).toEqual([]);
+    expect(readBestScore(storage)).toEqual({ score: 100, totalDistance: 150 });
+  });
+});

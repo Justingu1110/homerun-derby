@@ -15,9 +15,10 @@ import { SWING_TO_CONTACT_MS, stanceTime, swingProgress, windupTime } from './po
  * core says the round is over, then idles until the next play(). Every judgement
  * comes from the game core; this file only turns timestamps into poses.
  *
- * All positions are computed from high-resolution timestamps (performance.now /
- * event.timeStamp), never by accumulating frame deltas, so a frame hitch
- * can't change where the ball is or how a swing is judged.
+ * All positions are computed from timestamps on the app's game clock
+ * (performance.now / event.timeStamp minus time spent paused), never by
+ * accumulating frame deltas, so a frame hitch or a pause can't change where
+ * the ball is or how a swing is judged.
  */
 
 /** Presentation timings (not rules: those live in src/core/tuning.ts). */
@@ -78,10 +79,14 @@ export interface AtBat {
   usePitcher(id: DifficultyId): void;
   /** Puts this 難度's 投手 on the mound and plays the 投手登場 (a tap skips it); onDone runs when it ends. */
   introduce(id: DifficultyId, nowMs: number, onDone?: () => void): void;
-  /** Call every frame with performance.now(). */
+  /** Call every frame with the game clock's now. */
   update(nowMs: number): void;
-  /** A tap at this high-resolution timestamp (pointer event timeStamp). */
+  /** A tap at this game-clock time (from the pointer event's timeStamp). */
   swing(atMs: number): void;
+  /** True while batting (between and during pitches); false during the 投手登場, the 全壘打演出 and outside 一局. */
+  canPause(): boolean;
+  /** 中途結束: the core ends 一局 early and the at-bat goes idle. onOver is not called (no 結算). */
+  quit(): void;
   /** Current pitch timing, for automated checks (?debug). */
   debug(): { startMs: number; contactMs: number; pitch: Pitch; result: PitchResult | null; round: RoundState | null } | null;
 }
@@ -248,6 +253,22 @@ export function createAtBat(
     introduce(id, nowMs, onDone) {
       pitcher.use(id);
       startIntro(nowMs, () => onDone?.());
+    },
+
+    canPause() {
+      return !!round && (phase.name === 'waiting' || phase.name === 'pitch') && !cinematic.playing();
+    },
+
+    quit() {
+      if (!round) return;
+      round.quit();
+      phase = { name: 'idle' };
+      round = null;
+      onRoundOver = null;
+      batter.setStance(0);
+      hud.clear();
+      hud.hint(false);
+      hud.showRound(null);
     },
 
     debug() {
