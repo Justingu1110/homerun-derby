@@ -1,6 +1,7 @@
 import './style.css';
 import { difficulty, readBestScore, startRound } from './core';
 import { createFeedback } from './app/feedback';
+import { createGameClock } from './app/gameClock';
 import { mountDifficultyScreen } from './app/difficultyScreen';
 import { localDifficultyStorage } from './app/difficultyStorage';
 import { createScreens } from './app/screens';
@@ -23,7 +24,9 @@ if (!canvas || !hudRoot || !screensRoot || !cinematicRoot) throw new Error('#sta
 
 const view = createView(canvas);
 buildStadium(view.scene);
-const hud = createHud(hudRoot);
+// Everything in 一局 runs on this clock, so 暫停 freezes it all and 繼續 picks up where it stopped.
+const clock = createGameClock();
+const hud = createHud(hudRoot, () => pause());
 const settings = localSettings();
 const feedback = createFeedback(settings.get);
 const atBat = createAtBat(view.scene, view.camera, hud, createCinematicOverlay(cinematicRoot), {
@@ -45,7 +48,7 @@ enablePlayerShadows(view.renderer, view.scene);
 const storage = localBestScoreStorage();
 const difficultyStorage = localDifficultyStorage();
 
-// Screen flow: 標題 → 一局 → 結算 → (再玩一次 → 一局) | (回標題 → 標題); 標題 ⇄ 選難度, 標題 ⇄ 設定.
+// Screen flow: 標題 → 一局 → 結算 → (再玩一次 → 一局) | (回標題 → 標題); 一局 ⇄ 暫停 → (退出這一局 → 標題); 標題 ⇄ 選難度, 標題 ⇄ 設定.
 const showTitle = () => {
   hud.showRound(null);
   const chosen = difficultyStorage.load();
@@ -54,13 +57,32 @@ const showTitle = () => {
 };
 const play = () => {
   screens.hide();
-  atBat.play(startRound({ random: Math.random, storage, difficulty: difficultyStorage.load(), randomness: settings.get().randomness }), performance.now(), (state) => {
+  atBat.play(startRound({ random: Math.random, storage, difficulty: difficultyStorage.load(), randomness: settings.get().randomness }), clock.now(), (state) => {
     hud.showRound(null);
     screens.showResult(state);
   });
 };
+// 暫停 only while batting (not during the 投手登場 or the 全壘打演出, where a tap skips).
+const pause = () => {
+  if (clock.paused() || !atBat.canPause()) return;
+  clock.pause();
+  document.body.classList.add('is-paused');
+  screens.showPause();
+};
+const resume = () => {
+  screens.hide();
+  document.body.classList.remove('is-paused');
+  clock.resume();
+};
 const screens = createScreens(screensRoot, {
   start: play,
+  resume,
+  // 退出這一局: the core ends it early (no 最高分), straight back to the title without a 結算.
+  quit: () => {
+    resume();
+    atBat.quit();
+    showTitle();
+  },
   backToTitle: showTitle,
   settings: () => screens.showSettings(),
   difficulty: () => {
@@ -72,21 +94,28 @@ mountSettingsScreen(screens.settingsPanel, settings);
 // After picking a 難度: the 投手登場 of its 投手, then back to the title.
 const difficultyScreen = mountDifficultyScreen(screens.difficultyPanel, difficultyStorage, (picked) => {
   screens.hide();
-  atBat.introduce(picked, performance.now(), showTitle);
+  atBat.introduce(picked, clock.now(), showTitle);
 });
 showTitle();
 
 // Swing on any tap. event.timeStamp is a high-resolution time on the same clock
-// as performance.now(), taken when the touch happened, not when a frame ran.
+// as performance.now(), taken when the touch happened, not when a frame ran;
+// the game clock takes the time spent paused off it.
 const tapTime = (e: Event) => {
   const now = performance.now();
-  return e.timeStamp > 0 && e.timeStamp <= now + 1 ? e.timeStamp : now;
+  return clock.at(e.timeStamp > 0 && e.timeStamp <= now + 1 ? e.timeStamp : now);
 };
-window.addEventListener('pointerdown', (e) => atBat.swing(tapTime(e)));
+window.addEventListener('pointerdown', (e) => {
+  if (!clock.paused()) atBat.swing(tapTime(e));
+});
 
 if (new URLSearchParams(location.search).has('debug')) {
   // __view exposes the renderer so Playwright can read renderer.info (draw calls, memory).
-  Object.assign(window, { __atBat: atBat, __view: view });
+  // __clock is the game clock the at-bat runs on (debug times are on it, not performance.now()).
+  Object.assign(window, { __atBat: atBat, __view: view, __clock: clock });
 }
 
-view.start(() => atBat.update(performance.now()));
+view.start(() => {
+  atBat.update(clock.now());
+  hud.pausable(atBat.canPause());
+});

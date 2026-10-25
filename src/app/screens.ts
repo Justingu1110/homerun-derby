@@ -3,13 +3,15 @@ import { formatDistance, formatMultiplier } from '../presentation/format';
 import { keepTapsFromSwing } from './dom';
 
 /**
- * The menu screens around 一局 (標題, 結算), as DOM overlays above the stadium.
+ * The menu screens around 一局 (標題, 暫停, 結算), as DOM overlays above the stadium.
  * They only show what the core reports; no rules here.
  */
 export interface Screens {
   /** 標題: the 最高分 (with the 難度 and 投手 it was set on, and its 總飛距離) and the chosen 難度. */
   showTitle(best: BestScore | null, chosen: Difficulty): void;
   showResult(state: RoundState): void;
+  /** 暫停 menu over the frozen 一局: 繼續 or 退出這一局. */
+  showPause(): void;
   /** The 設定 screen; its contents are filled by mountSettingsScreen(settingsPanel). */
   showSettings(): void;
   readonly settingsPanel: HTMLElement;
@@ -24,6 +26,10 @@ export interface ScreenActions {
   backToTitle(): void;
   difficulty(): void;
   settings(): void;
+  /** 暫停 → 繼續. */
+  resume(): void;
+  /** 暫停 → 退出這一局. */
+  quit(): void;
 }
 
 export function createScreens(root: HTMLElement, actions: ScreenActions): Screens {
@@ -51,10 +57,18 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
         <button type="button" class="btn" data-action="title">回標題</button>
       </div>
     </section>
+    <section class="screen screen-pause" hidden>
+      <h2 class="result-heading">暫停</h2>
+      <div class="screen-buttons">
+        <button type="button" class="btn btn-primary" data-action="resume">繼續</button>
+        <button type="button" class="btn" data-action="quit">退出這一局</button>
+      </div>
+    </section>
     <section class="screen screen-settings" hidden></section>
     <section class="screen screen-difficulty" hidden></section>`;
   const title = root.querySelector<HTMLElement>('.screen-title')!;
   const result = root.querySelector<HTMLElement>('.screen-result')!;
+  const pause = root.querySelector<HTMLElement>('.screen-pause')!;
   const settings = root.querySelector<HTMLElement>('.screen-settings')!;
   const difficultyPanel = root.querySelector<HTMLElement>('.screen-difficulty')!;
   const field = (name: string) => root.querySelector<HTMLElement>(`[data-${name}]`)!;
@@ -67,6 +81,8 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
     else if (action === 'title') actions.backToTitle();
     else if (action === 'difficulty') actions.difficulty();
     else if (action === 'settings') actions.settings();
+    else if (action === 'resume') actions.resume();
+    else if (action === 'quit') actions.quit();
   });
 
   const show = (screen: HTMLElement | null) => {
@@ -94,6 +110,9 @@ export function createScreens(root: HTMLElement, actions: ScreenActions): Screen
       field('total').textContent = formatDistance(state.totalDistance);
       field('longest').textContent = state.longest ? formatDistance(state.longest.distance) : '—';
       show(result);
+    },
+    showPause() {
+      show(pause);
     },
     settingsPanel: settings,
     showSettings() {

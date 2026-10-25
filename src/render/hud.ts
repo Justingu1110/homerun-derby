@@ -18,14 +18,18 @@ export interface Hud {
   hint(on: boolean): void;
   /** While the 全壘打演出 plays, the HUD steps aside (it owns the screen); the 球速 label is hidden for good. */
   cinematic(on: boolean): void;
+  /** Shows the ⏸ button (only while batting); repeating the same value is a no-op. */
+  pausable(on: boolean): void;
   /** Top bar during 一局: 分數, 難度倍率, 出局 dots. null hides it. */
   showRound(state: RoundState | null): void;
 }
 
-export function createHud(root: HTMLElement): Hud {
+/** onPause: the ⏸ button at the right end of the top bar was pressed. */
+export function createHud(root: HTMLElement, onPause: () => void = () => {}): Hud {
   root.innerHTML =
     '<div class="hud-bar" hidden><div class="hud-score"><span class="hud-score-label">分數</span><span class="hud-score-value"></span></div>' +
-    '<div class="hud-mult"></div><div class="hud-outs" aria-label="出局"></div></div>' +
+    '<div class="hud-mult"></div><div class="hud-outs" aria-label="出局"></div>' +
+    '<button type="button" class="hud-pause" aria-label="暫停" hidden>⏸</button></div>' +
     '<div class="hud-timing"></div><div class="hud-result"></div><div class="hud-hint">點畫面任何地方揮棒</div>' +
     '<div class="hud-pitch"><span class="hud-pitch-type"></span><span class="hud-pitch-mph"></span><span class="hud-pitch-unit">mph</span></div>';
   const timing = root.querySelector<HTMLElement>('.hud-timing')!;
@@ -38,6 +42,10 @@ export function createHud(root: HTMLElement): Hud {
   const pitchEl = root.querySelector<HTMLElement>('.hud-pitch')!;
   const pitchType = root.querySelector<HTMLElement>('.hud-pitch-type')!;
   const pitchMph = root.querySelector<HTMLElement>('.hud-pitch-mph')!;
+  const pauseBtn = root.querySelector<HTMLButtonElement>('.hud-pause')!;
+  // Pressing ⏸ is never a 揮棒: its pointerdown stops before the swing handler on window.
+  pauseBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  pauseBtn.addEventListener('click', () => onPause());
   let labelled: Pitch | null = null;
   const showPitch = (pitch: Pitch | null) => {
     if (pitch === labelled) return;
@@ -80,6 +88,10 @@ export function createHud(root: HTMLElement): Hud {
     cinematic(on) {
       if (on) showPitch(null);
       root.classList.toggle('is-cinematic', on);
+    },
+    pausable(on) {
+      if (pauseBtn.hidden === !on) return;
+      pauseBtn.hidden = !on;
     },
     hint(on) {
       hintEl.hidden = !on;
