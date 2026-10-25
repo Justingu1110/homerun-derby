@@ -122,6 +122,11 @@ export interface Round {
    * it has gone by: returns its 沒揮棒 out. Before that, null (still undecided).
    */
   tick(elapsedMs: number): PitchResult | null;
+  /**
+   * 中途結束: ends the round now (the player quit). Afterwards it is over: no pitch, swing or
+   * tick is accepted, and the 最高分 is never written, whatever the 分數. Calling it again does nothing.
+   */
+  quit(): void;
 }
 
 export function startRound(options: RoundOptions): Round {
@@ -136,6 +141,7 @@ export function startRound(options: RoundOptions): Round {
   let totalDistance = 0;
   let longest: BattedBall | null = null;
   let newBest = false;
+  let quit = false;
   const facilities = createFacilities(random);
   const takePitch = () => {
     if (!current) throw new Error('No pitch in flight: call nextPitch() first');
@@ -155,7 +161,7 @@ export function startRound(options: RoundOptions): Round {
     if (isOver()) newBest = recordIfBest(storage, { score, totalDistance, difficulty: difficulty.id });
     return result;
   };
-  const isOver = () => outs >= TUNING.round.maxOuts;
+  const isOver = () => quit || outs >= TUNING.round.maxOuts;
   return {
     state() {
       return { outs, maxOuts: TUNING.round.maxOuts, over: isOver(), score, difficulty: difficulty.id, multiplier, homeRuns, totalDistance, longest, newBest, smashed: facilities.smashed() };
@@ -177,6 +183,10 @@ export function startRound(options: RoundOptions): Round {
       if (current && elapsedMs <= current.swingDeadlineMs) return null;
       takePitch();
       return record({ kind: 'out', out: 'noSwing', timing: null, ball: null });
+    },
+    quit() {
+      quit = true;
+      current = null;
     },
   };
 }
